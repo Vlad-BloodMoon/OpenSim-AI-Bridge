@@ -1,0 +1,56 @@
+name: Build OpenSim AI Bridge (.NET 8)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - '.github/workflows/build.yml'
+  pull_request:
+    paths:
+      - 'src/**'
+      - '.github/workflows/build.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build and package Linux x64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj
+
+      - name: Compile in Release configuration
+        run: dotnet build src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-restore
+
+      - name: Publish for Linux x64 (framework-dependent)
+        run: |
+          dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
+            -c Release -r linux-x64 --self-contained false \
+            -o dist/linux-x64
+
+      - name: Bundle documentation and example config
+        run: |
+          mkdir -p dist/linux-x64/config
+          cp config/appsettings.example.json dist/linux-x64/config/
+          cp docs/INSTALLATION_V01_FR.md dist/linux-x64/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSim-AI-Bridge-v0.1-linux-x64
+          path: dist/linux-x64/
+          if-no-files-found: error
+          retention-days: 14
