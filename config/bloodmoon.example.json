@@ -1,0 +1,49 @@
+{
+  "Grid": {
+    "LoginUri": "http://bloodmoonpack.com:8002/",
+    "AvatarFirstName": "BloodMoon",
+    "AvatarLastName": "AI",
+    "AvatarPasswordEnv": "OSAI_AVATAR_PASSWORD",
+    "StartLocation": {
+      "Mode": "Region",
+      "RegionName": "BloodMoon_TEST",
+      "Position": {
+        "X": 128,
+        "Y": 128,
+        "Z": 25
+      }
+    },
+    "FallbackToHome": true
+  },
+  "Bot": {
+    "EnableLocalChat": true,
+    "EnableIM": true,
+    "ReconnectEnabled": true
+  },
+  "Web": {
+    "BindAddress": "127.0.0.1",
+    "Port": 5050
+  },
+  "Ai": {
+    "Enabled": false,
+    "Provider": "OpenAI",
+    "ApiKeyEnv": "OPENAI_API_KEY",
+    "AuthorizedUuidList": [],
+    "MonthlyApplicationBudgetEUR": 5
+  },
+  "Translation": {
+    "Enabled": false,
+    "Provider": "ConfigurableHttp",
+    "Endpoint": "https://YOUR-TRANSLATOR-ENDPOINT",
+    "ApiKeyEnv": "TRANSLATOR_API_KEY"
+  },
+  "GridIntegration": {
+    "Enabled": false,
+    "Mode": "ReadOnly",
+    "ConnectionStringEnv": "OSAI_GRID_READONLY_CONNECTION"
+  },
+  "Storage": {
+    "Provider": "SQLite",
+    "FilePath": "data/opensim-ai-bridge.sqlite"
+  }
+}
