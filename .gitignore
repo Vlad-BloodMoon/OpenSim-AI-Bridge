@@ -1,0 +1,33 @@
+# .NET
+bin/
+obj/
+.vs/
+*.user
+*.suo
+TestResults/
+
+# Secrets and local config
+.env
+.env.*
+!.env.example
+appsettings.json
+appsettings.*.json
+!appsettings.example.json
+secrets/
+*.pem
+*.pfx
+*.key
+
+# Logs/data
+logs/
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
