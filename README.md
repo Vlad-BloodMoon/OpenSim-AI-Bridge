@@ -6,7 +6,7 @@
 
 **EN** — Open-source project to connect a real autonomous avatar to OpenSimulator without a graphical viewer, with web administration, configurable rule-based answers, translation, controlled grid integrations, and remote AI access for authorized users.
 
-> **Status / État :** specification and architecture phase. No production-ready bot has been released yet.
+> **Status / État :** experimental V0.1 headless client source added; not yet compiled or validated on BloodMoon. No production-ready release.
 
 ## Key principles / Principes
 
@@ -28,6 +28,13 @@
 - [Roadmap](docs/ROADMAP.md)
 - [Security policy](SECURITY.md)
 - [Example configuration](config/appsettings.example.json)
+
+## First experimental client / Premier client expérimental
+
+- [Source .NET 8](src/OpenSimAiBridge.Bot/Program.cs)
+- [Installation FR and first test](docs/INSTALLATION_V01_FR.md)
+
+This prototype has **no AI, Web dashboard, database adapter or translation yet**. Do not use in production before build and grid tests.
 
 ## Initial milestone / Premier jalon
 
