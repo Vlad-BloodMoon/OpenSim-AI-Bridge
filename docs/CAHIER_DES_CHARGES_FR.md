@@ -125,6 +125,21 @@ GET  /api/grid/users/{uuid}/presence
 
 Versions, authentification et formats de réponse seront définis avant implémentation. `send-im` et `teleport` nécessitent droits spécifiques et traces d'audit.
 
+
+## Gestion des sessions : mode Firestorm / maintenance
+
+**Exigence prioritaire :** le propriétaire doit pouvoir reprendre manuellement le compte du bot dans un viewer (Firestorm, etc.) pour changer son apparence, ses vêtements, son inventaire ou ses animations, **sans conflit avec la passerelle**.
+
+- L'interface Web authentifiée doit proposer **Connecter**, **Déconnecter** et **Redémarrer** avec statut réel et journal des actions.
+- Une fonction **Mode Firestorm / maintenance** doit suspendre la reconnexion automatique *avant* de déclencher une déconnexion propre (`Logout`).
+- La suspension doit survivre au redémarrage du processus ou du service ; un redémarrage systemd ne doit pas annuler le mode maintenance.
+- L'opérateur peut alors utiliser un viewer. Le bot ne redémarre que sur action explicite lorsque le viewer est fermé.
+- Éviter les sessions concurrentes : sur rejet de session, connexion remplacée ou connexion déjà active, ne pas effectuer de retries agressifs ; alerter l'administrateur et attendre une décision.
+- S'il y a une déconnexion alors que le bot est actif et hors maintenance, appliquer un backoff borné ; ne jamais lutter contre une connexion viewer.
+- Lors d'une demande d'arrêt, drainer/annuler les opérations en cours, ne plus accepter de nouveaux messages, puis fermer proprement la session.
+- Le panneau Web doit distinguer **en ligne dans le monde**, **bot actif**, **déconnecté**, **en maintenance**, **reconnexion suspendue** et **erreur**.
+- En V0.1 avant l'interface Web, `Ctrl+C` arrête le processus interactif ; ne pas installer de service en redémarrage automatique pour les premiers essais.
+
 ## 11. Exigences non fonctionnelles
 
 - Faible consommation sur l'hôte : pas de modèle local, processus .NET léger, files bornées, caches contrôlés.
