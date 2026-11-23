@@ -37,7 +37,7 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 - [ ] Server-side authorization, validation, confirmation and audit for every tool.
 
 ## V0.2 follow-up — Appearance and multiple avatars
-- [ ] Diagnose recurring CoreJ2K `Invalid value in 'rate' option: 2.8125` when LibreMetaverse bakes avatar textures on login; reproduce, visually check avatar, identify package version, fix with a regression test before rollout.
+- [ ] Validate CoreJ2K `rate: 2.8125` fix on BloodMoon: **likely locale mismatch** identified in upstream `ParameterList.GetFloatParameter` (`float.Parse(s)` uses current culture). Invariant-culture guard and offline CI regression test added; real grid retest still pending.
 - [ ] Support multiple **independent** bot accounts (e.g. BloodMoon AI, optionally Jolie Candy) without duplicate viewer sessions.
 - [ ] Each bot has its own encrypted/protected credentials, startup region and XYZ, heartbeat/presence, IM and reconnect settings, logs, service lifecycle, Firestorm lock and service identity.
 - [ ] Web admin lists bots, selects one to edit, and independently starts/stops/restarts or puts that account in Firestorm maintenance.
