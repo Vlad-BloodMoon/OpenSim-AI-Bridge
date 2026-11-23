@@ -4,6 +4,8 @@ After=network-online.target
 Wants=network-online.target
 # This condition prevents any new bot connection while Firestorm mode is active.
 ConditionPathExists=!@INSTALL_DIR@/maintenance.lock
+StartLimitIntervalSec=120
+StartLimitBurst=4
 
 [Service]
 Type=simple
@@ -17,8 +19,6 @@ KillSignal=SIGINT
 TimeoutStopSec=25
 Restart=on-failure
 RestartSec=15
-StartLimitIntervalSec=120
-StartLimitBurst=4
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=false
