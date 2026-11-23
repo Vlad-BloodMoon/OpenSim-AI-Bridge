@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import re
 import secrets
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -137,3 +138,48 @@ def create_bot(values, legacy_install):
     if result.returncode:
         return {"botId": bot_id, "started": False, "message": "Avatar registered, but the service failed to start"}
     return {"botId": bot_id, "started": True}
+
+
+def delete_bot(bot_id, expected_name):
+    """Stop and disable a registered secondary bot, then remove only its own private data.
+
+    The legacy main avatar uses ID 'main', which is invalid here by construction.
+    A fixed, server-generated identifier determines both the unit and storage path.
+    """
+    path = bot_path(bot_id)
+    if path.is_symlink() or not path.is_dir():
+        raise BotRegistryError("Unknown or unsafe bot directory")
+    metadata = get_metadata(bot_id)
+    actual_name = f"{metadata['firstName']} {metadata['lastName']}".strip()
+    if not isinstance(expected_name, str) or expected_name != actual_name:
+        raise BotRegistryError("Avatar name confirmation does not match")
+    unit = bot_unit(bot_id)
+    try:
+        result = subprocess.run(
+            ["/usr/bin/systemctl", "disable", "--now", unit],
+            capture_output=True, text=True, timeout=30, check=False,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C"},
+        )
+        if result.returncode != 0:
+            raise BotRegistryError("Could not stop and disable the avatar service")
+        check = subprocess.run(
+            ["/usr/bin/systemctl", "show", "--property=ActiveState", unit],
+            capture_output=True, text=True, timeout=10, check=False,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C"},
+        )
+        if check.returncode or check.stdout.strip() not in ("ActiveState=inactive", "ActiveState=failed"):
+            raise BotRegistryError("Avatar service is not confirmed stopped; private data preserved")
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise BotRegistryError("Failed to verify avatar service shutdown; private data preserved") from exc
+
+    # Rename within the root-owned parent before deleting. shutil.rmtree does
+    # not follow directory symlinks, and never touches the shared .NET install.
+    retired = BOT_ROOT / (".removing-" + bot_id)
+    if retired.exists() or retired.is_symlink():
+        raise BotRegistryError("Pending removal directory already exists; manual inspection needed")
+    path.rename(retired)
+    try:
+        shutil.rmtree(retired)
+    except OSError as exc:
+        raise BotRegistryError("Service removed, but private files need manual cleanup") from exc
+    return {"removed": True, "name": actual_name}
