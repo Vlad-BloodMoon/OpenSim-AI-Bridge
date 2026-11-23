@@ -645,8 +645,11 @@ textarea{resize:vertical}
 <option value="<?= esc($provider) ?>" <?= ($aiSettings['provider'] ?? '') === $provider ? 'selected' : '' ?>><?= esc($provider) ?></option>
 <?php endforeach ?>
 </select></div>
-<div><label for="ai-model">Identifiant du modèle</label>
-<input type="text" id="ai-model" name="aiModel" maxlength="100" required value="<?= esc((string) ($aiSettings['model'] ?? 'gpt-4.1-mini')) ?>"></div>
+<div><label for="ai-model-preset">Modèle proposé</label>
+<select id="ai-model-preset" aria-describedby="ai-model-hint"></select>
+<label for="ai-model">Identifiant du modèle (modifiable)</label>
+<input type="text" id="ai-model" name="aiModel" maxlength="100" required value="<?= esc((string) ($aiSettings['model'] ?? 'gpt-4.1-mini')) ?>">
+<small id="ai-model-hint" class="muted">Les modèles proposés dépendent du fournisseur. Tu peux aussi saisir un identifiant personnalisé.</small></div>
 </div>
 <label for="ai-key">Clé API privée</label>
 <input type="password" id="ai-key" name="aiKey" maxlength="256" autocomplete="new-password" placeholder="<?= !empty($aiSettings['hasKey']) ? 'Clé déjà enregistrée — laisser vide pour conserver' : 'Saisir la clé API du fournisseur' ?>">
@@ -666,6 +669,63 @@ textarea{resize:vertical}
 </form>
 <?php endif ?>
 </section>
+<script>
+(function () {
+  'use strict';
+  var provider = document.getElementById('ai-provider');
+  var presets = document.getElementById('ai-model-preset');
+  var model = document.getElementById('ai-model');
+  if (!provider || !presets || !model) return;
+  // Suggestions only; provider offerings and account permissions may change.
+  var catalog = {
+    Groq: [
+      ['openai/gpt-oss-20b', 'GPT-OSS 20B — premier test'],
+      ['openai/gpt-oss-120b', 'GPT-OSS 120B'],
+      ['llama-3.3-70b-versatile', 'Llama 3.3 70B Versatile']
+    ],
+    OpenAI: [
+      ['gpt-4.1-mini', 'GPT-4.1 mini'],
+      ['gpt-4o-mini', 'GPT-4o mini'],
+      ['gpt-4.1', 'GPT-4.1']
+    ],
+    OpenRouter: [
+      ['openai/gpt-oss-20b:free', 'GPT-OSS 20B (gratuit, si disponible)']
+    ]
+  };
+  function option(value, label) {
+    var item = document.createElement('option');
+    item.value = value;
+    item.textContent = label;
+    return item;
+  }
+  function refresh(changeProvider) {
+    var list = catalog[provider.value] || [];
+    var current = model.value.trim();
+    presets.replaceChildren();
+    list.forEach(function (item) { presets.appendChild(option(item[0], item[1])); });
+    presets.appendChild(option('__custom__', 'Autre modèle — saisir ci-dessous'));
+    var found = list.some(function (item) { return item[0] === current; });
+    if (!changeProvider && !found && current) {
+      presets.value = '__custom__'; // Preserve existing saved model.
+    } else {
+      if (changeProvider || !current) model.value = list.length ? list[0][0] : '';
+      presets.value = list.some(function (item) { return item[0] === model.value; })
+        ? model.value : '__custom__';
+    }
+  }
+  provider.addEventListener('change', function () { refresh(true); });
+  presets.addEventListener('change', function () {
+    if (presets.value !== '__custom__') model.value = presets.value;
+    else { model.focus(); model.select(); }
+  });
+  model.addEventListener('input', function () {
+    presets.value = Array.from(presets.options).some(function (item) {
+      return item.value === model.value;
+    }) ? model.value : '__custom__';
+  });
+  refresh(false);
+}());
+</script>
 <section class="panel"><h2>Prochaines fonctionnalités</h2>
 <div class="module-grid">
 <div class="stat"><strong>FAQ et base de connaissances</strong><small>Réponses éditables et documents par bot</small></div>
