@@ -64,10 +64,30 @@ public static class ImReplyFormatter
             }
             if (length == 0) break;
 
-            // Split on sentence/paragraph boundaries first, then spaces.
-            var split = text.LastIndexOfAny(new[] { '\n', '.', '!', '?', ' ' }, length - 1, length);
-            if (split < length / 2) split = length;
-            else if (text[split] == '.' || text[split] == '!' || text[split] == '?') split++;
+            // Prefer a paragraph or complete sentence, even when it does not
+            // fill the entire IM. Never break between two words if avoidable.
+            var window = text[..length];
+            var split = window.LastIndexOf('\n');
+            if (split < length / 3)
+            {
+                split = -1;
+                for (var i = length - 1; i >= length / 3; --i)
+                {
+                    // A sentence must end before whitespace or end of chunk.
+                    // Ignore dots in URLs (e.g. bloodmoonpack.com).
+                    if ((window[i] == '.' || window[i] == '!' || window[i] == '?')
+                        && (i + 1 == length || char.IsWhiteSpace(text[i + 1])))
+                    {
+                        split = i + 1;
+                        break;
+                    }
+                }
+            }
+            if (split < length / 3)
+            {
+                split = window.LastIndexOf(' ');
+                if (split < 1) split = length;
+            }
 
             var chunk = text[..split].Trim();
             if (chunk.Length == 0) { split = length; chunk = text[..split]; }
