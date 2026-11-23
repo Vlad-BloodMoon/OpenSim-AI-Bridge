@@ -19,8 +19,11 @@ import time
 import multi_bot
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot", "fleet_status", "fleet_stop", "fleet_resume"))
 MAX_REQUEST = 4096
+FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
+FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
+FLEET_SNAPSHOT = FLEET_ROOT / "global-maintenance-state.json"
 
 
 class ControlError(Exception):
@@ -167,10 +170,89 @@ def save_settings(install, values):
     return {"saved": True, "restartRequired": True}
 
 
+def fleet_units():
+    return [UNIT] + [multi_bot.bot_unit(bot_id) for bot_id in multi_bot.instances()]
+
+
+def fleet_status():
+    units = fleet_units()
+    running = sum(service_state(unit)["active"] == "active" for unit in units)
+    return {"maintenance": FLEET_LOCK.exists(), "total": len(units), "running": running}
+
+
+def fleet_stop(confirmed):
+    if not confirmed:
+        raise ControlError("Confirm global maintenance")
+    if FLEET_LOCK.exists():
+        return fleet_status()
+    units = fleet_units()
+    prior = [unit for unit in units if service_state(unit)["active"] == "active"]
+    fd, tmp = tempfile.mkstemp(prefix=".fleet-", dir=str(FLEET_ROOT))
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w") as output:
+            json.dump({"running": prior}, output)
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(tmp, FLEET_SNAPSHOT)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
+    create_lock(FLEET_LOCK)
+    failures = 0
+    for unit in units:
+        try:
+            systemctl("stop", unit=unit)
+        except ControlError:
+            failures += 1
+    if failures:
+        raise ControlError(f"Global maintenance active: {failures} service(s) could not stop")
+    return fleet_status()
+
+
+def fleet_resume(confirmed):
+    if not confirmed:
+        raise ControlError("Confirm global resume")
+    if not FLEET_LOCK.exists():
+        return fleet_status()
+    if not FLEET_SNAPSHOT.is_file():
+        raise ControlError("Missing maintenance snapshot")
+    prior = json.loads(FLEET_SNAPSHOT.read_text(encoding="utf-8"))["running"]
+    allowed = set(fleet_units())
+    if not isinstance(prior, list) or any(type(u) is not str or u not in allowed for u in prior):
+        raise ControlError("Invalid maintenance snapshot")
+    FLEET_LOCK.unlink()
+    failed = 0
+    for unit in prior:
+        if unit == UNIT:
+            personal_lock = None
+        else:
+            bot_id = unit[len("opensim-ai-bridge@"):-len(".service")]
+            personal_lock = multi_bot.bot_path(bot_id) / "maintenance.lock"
+        if personal_lock is not None and personal_lock.exists():
+            continue
+        try:
+            systemctl("start", unit=unit)
+        except ControlError:
+            failed += 1
+    if failed:
+        raise ControlError(f"Global maintenance ended, but {failed} service(s) failed to start")
+    FLEET_SNAPSHOT.unlink(missing_ok=True)
+    return fleet_status()
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "fleet_status":
+        return fleet_status()
+    if command == "fleet_stop":
+        return fleet_stop(confirm)
+    if command == "fleet_resume":
+        return fleet_resume(confirm)
+    if FLEET_LOCK.exists() and command in ("create_bot", "start", "restart", "resume"):
+        raise ControlError("Global maintenance active")
     if command == "create_bot":
         try:
             return multi_bot.create_bot(credentials, install)
@@ -219,9 +301,9 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
         lock.unlink(missing_ok=True)
         systemctl("start", unit=unit)
     elif command == "start":
-        systemctl("start")
+        systemctl("start", unit=unit)
     elif command == "stop":
-        systemctl("stop")
+        systemctl("stop", unit=unit)
     elif command == "restart":
         systemctl("restart", unit=unit)
     return {**service_state(unit), "maintenance": lock.exists()}
