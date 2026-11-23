@@ -74,7 +74,7 @@ public sealed class RemoteAiResponder : IDisposable
         (p.Provider == "OpenRouter" &&
             (p.Model == "openrouter/free" || p.Model.EndsWith(":free", StringComparison.Ordinal))) ||
         (p.Provider == "Gemini" &&
-            (p.Model == "gemini-3-flash-preview"));
+            (p.Model is "gemini-3-flash-preview" or "gemini-3.5-flash-lite" or "gemini-3.1-flash-lite"));
 
     private static bool ValidProfile(RemoteAiProfile p) =>
         p.Enabled && p.Verified && SafePublicModel(p) &&
@@ -101,7 +101,7 @@ public sealed class RemoteAiResponder : IDisposable
     {
         if (Multi)
         {
-            var candidates = settings.Profiles.Where(ValidProfile).Take(8).ToArray();
+            var candidates = settings.Profiles.Where(ValidProfile).Take(16).ToArray();
             return settings.Mode == "single" ? candidates.Take(1).ToArray() : candidates;
         }
         return new[] { new RemoteAiProfile {
@@ -236,7 +236,7 @@ public sealed class RemoteAiResponder : IDisposable
                         var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
                         var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
                         unavailableUntil[profile.Id] = now + boundedRetry;
-                        if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, boundedRetry);
+                        // A 503/429 can be specific to one model. Keep other models eligible.
                         switched = true;
                         continue;
                     }
@@ -244,7 +244,7 @@ public sealed class RemoteAiResponder : IDisposable
                     {
                         // 4xx is often an invalid key or model; do not retry automatically.
                         unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
-                        if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, TimeSpan.FromMinutes(15));
+                        // Invalid model/key may be profile-specific: do not block other models.
                         switched = true;
                         continue;
                     }
@@ -267,7 +267,7 @@ public sealed class RemoteAiResponder : IDisposable
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
                 {
                     unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
-                    if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, TimeSpan.FromMinutes(3));
+                    // Transport error for this model does not disable its provider.
                     switched = true;
                 }
             }
