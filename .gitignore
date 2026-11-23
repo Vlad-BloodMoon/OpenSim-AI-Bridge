@@ -16,6 +16,8 @@ appsettings.*.json
 secrets/
 bot-password.txt
 **/bot-password.txt
+maintenance.lock
+**/maintenance.lock
 *.pem
 *.pfx
 *.key
