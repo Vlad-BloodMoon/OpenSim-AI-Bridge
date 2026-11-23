@@ -100,3 +100,17 @@ Première tranche fonctionnelle **codée et testée via GitHub Actions, mais pas
 6. Passer ensuite en « Multi-IA » pour tester la priorité et le repli en conditions contrôlées. Vérifier chaque avatar et les journaux avant de généraliser.
 
 **Ne pas** copier uniquement l'ancienne DLL : Microsoft.Data.Sqlite ajoute des dépendances natives publiées avec .NET. **Ne pas** démarrer avec une configuration partiellement migrée.
+
+## Décision d'architecture — configuration entièrement partagée (23 novembre 2026)
+
+**Décision de l'administrateur** : tous les avatars BloodMoon AI ayant le module IA activé doivent utiliser la **même configuration multi-fournisseurs et les mêmes clés API**. Il ne faut jamais recopier ni renseigner ces fournisseurs/clé pour chaque avatar.
+
+La configuration globale est conservée dans `/home/louna49400/OpenSim-AI-Bridge/config/multi-ai.json` et les clés dans `/home/louna49400/OpenSim-AI-Bridge/ai-keys/`, sous le compte du service bot et hors du Web. Seule la propriété `Ai.Enabled` du `appsettings.json` de chaque avatar détermine s'il profite ou non de la chaîne commune (Groq prioritaire, OpenRouter secondaire après test, etc.). La configuration globale comprend le mode unique/automatique, l'ordre ↑/↓, les modèles, les clés, les consignes et les limites par avatar. Les clés ne sont pas dans les fichiers JSON.
+
+Dans la page « Modules IA », un **interrupteur d'activation propre à l'avatar sélectionné** précède le formulaire global commun. Tout changement de la liste des fournisseurs concerne **tous** les avatars actifs lors de leur prochain redémarrage, et l'interface doit le signaler. Les nouveaux avatars sont créés avec le module IA désactivé ; l'administrateur peut l'activer sans reconfigurer une API.
+
+Le service démarre depuis `OSAI_INSTALL_DIR` et charge l'unique fichier global `config/multi-ai.json` ; il combine `Enabled` du fichier de l'avatar et `Enabled` global. Il récupère les clés dans le dossier commun `ai-keys`. La clé Groq historique `ai-api-key.txt` du bot principal reste disponible sans déplacement, pour conserver l'installation actuelle et permettre un retour arrière.
+
+**Sécurité** : les quotas de chaque API sont partagés entre avatars sur le compte du fournisseur même si les limites applicatives sont encore **par processus/avatar**. Ne pas prétendre que les compteurs persistants ou le plafond commun inter-avatars sont déjà implémentés : une prochaine itération devra introduire un compteur partagé et une protection globale avant de déployer des dizaines de bots.
+
+**Remarque** : cette décision remplace toutes les mentions précédentes de configuration des fournisseurs *par avatar* dans les phases v0.4 ; la configuration par avatar n'inclut plus que l'activation de son IA.
