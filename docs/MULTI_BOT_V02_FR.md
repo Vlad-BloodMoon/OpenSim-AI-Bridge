@@ -61,3 +61,7 @@ L'interface n'empile plus tous les paramètres sur une seule page. Le menu disti
 Chaque requête POST inclut l'identifiant serveur du bot sélectionné et sa rubrique pour éviter d'agir involontairement sur le bot principal. Les données de formulaire sont traitées par le même backend PHP authentifié, sans aucun mot de passe renvoyé à la page.
 
 **À tester au déploiement :** passer d'un bot à l'autre via « Mes avatars » puis vérifier que les boutons et réglages ciblent le compte sélectionné, surtout après changement d'onglet.
+
+## Actualisation des informations — 23 novembre 2026
+
+Les anciens bandeaux de succès (« connexion en cours » / « Commande exécutée ») restaient à l'écran après une action POST, sans indiquer la réalité de la connexion. Le correctif utilise **POST → HTTP 303 → GET** et une notification de session consommée une seule fois. La page **Tableau de bord** se réactualise automatiquement toutes les 10 secondes pour lire la présence et l'état réels depuis le contrôleur, sans republier de commande. Les pages **Mes avatars** et **Configuration** ne s'actualisent pas automatiquement afin de ne pas perdre des saisies. Ceci est un rechargement ciblé de page, pas encore une API AJAX en temps réel. Vérifier en production qu'un démarrage, un arrêt et la connexion de Jolie Candy mettent à jour l'état sans laisser de bandeau obsolète.
