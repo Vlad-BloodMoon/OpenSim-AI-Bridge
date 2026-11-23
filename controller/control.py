@@ -565,12 +565,6 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
-    if command == "test_multi_ai_profile":
-        return test_multi_ai_profile(install, settings)
-    if command == "get_multi_ai_settings":
-        return read_multi_ai_settings(install)
-    if command == "save_multi_ai_settings":
-        return save_multi_ai_settings(install, settings)
     if command == "knowledge_status":
         return knowledge_status(install)
     if command == "knowledge_refresh":
@@ -617,6 +611,12 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
             raise ControlError(str(exc)) from exc
     else:
         unit = UNIT
+    if command == "test_multi_ai_profile":
+        return test_multi_ai_profile(install, settings)
+    if command == "get_multi_ai_settings":
+        return read_multi_ai_settings(install)
+    if command == "save_multi_ai_settings":
+        return save_multi_ai_settings(install, settings)
     if command == "get_ai_settings":
         return read_ai_settings(install)
     if command == "save_ai_settings":
