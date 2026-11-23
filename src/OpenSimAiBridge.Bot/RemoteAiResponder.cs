@@ -27,7 +27,7 @@ public sealed class RemoteAiSettings
     public int MaxRequestsPerHour { get; set; } = 30;
     public int MinSecondsBetweenRequests { get; set; } = 15;
     public string SystemPrompt { get; set; } = "Tu es un assistant BloodMoon. Réponds dans la langue du résident, sans inventer.";
-    public string Mode { get; set; } = "single";
+    public string Mode { get; set; } = "auto";
     public List<RemoteAiProfile> Profiles { get; set; } = new();
 }
 
