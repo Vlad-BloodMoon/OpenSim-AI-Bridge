@@ -330,6 +330,7 @@ def test_multi_ai_profile(install, values):
     endpoints = {
         "Groq": "https://api.groq.com/openai/v1/chat/completions",
         "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
+        "Gemini": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
     }
     if provider not in endpoints:
         raise ControlError("Unsupported public provider")
@@ -345,7 +346,7 @@ def test_multi_ai_profile(install, values):
     # and the API returns HTTP 200 with empty visible text.
     payload = json.dumps({"model": model, "messages": [
         {"role": "user", "content": "Reply with the single word OK."}],
-        "max_tokens": 1024 if provider == "OpenRouter" else 64}).encode()
+        "max_tokens": 1024 if provider in ("OpenRouter", "Gemini") else 64}).encode()
     class DenyRedirects(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             raise ControlError("Provider test redirected; test aborted")
@@ -354,7 +355,7 @@ def test_multi_ai_profile(install, values):
         endpoints[provider], data=payload, method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
-        with opener.open(request, timeout=35 if provider == "OpenRouter" else 15) as response:
+        with opener.open(request, timeout=35 if provider in ("OpenRouter", "Gemini") else 15) as response:
             result = json.loads(response.read(8192))
             content = result["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
