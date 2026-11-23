@@ -210,6 +210,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = (string) ($response['error'] ?? 'Création impossible.');
                 }
             }
+        } elseif ($action === 'set_avatar_ai_enabled') {
+            $page = 'modules';
+            $response = request_control('set_avatar_ai_enabled', false,
+                ['enabled' => ($_POST['avatarAiEnabled'] ?? '') === '1'], $selectedBot);
+            if ($response['ok'] ?? false) {
+                $message = 'IA de cet avatar mise à jour. Redémarre cet avatar pour appliquer le changement.';
+            } else {
+                $error = (string)($response['error'] ?? 'Impossible de modifier le mode IA.');
+            }
         } elseif ($action === 'save_multi_ai_settings') {
             $page = 'modules';
             $entries = is_array($_POST['profiles'] ?? null) ? array_values($_POST['profiles']) : [];
@@ -366,6 +375,8 @@ $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_sett
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
 $multiResult = $authenticated && $page === 'modules' ? request_control('get_multi_ai_settings', false, null, $selectedBot) : null;
 $multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
+$avatarAiResult = $authenticated && $page === 'modules' ? request_control('get_avatar_ai_enabled', false, null, $selectedBot) : null;
+$avatarAiEnabled = ($avatarAiResult['result']['enabled'] ?? false) === true;
 $kbResponse = $authenticated && $page === 'knowledge' ? request_control('knowledge_status') : null;
 $kb = is_array($kbResponse['result'] ?? null) ? $kbResponse['result'] : null;
 $kbRunning = in_array(($kb['service'] ?? ''), ['active', 'activating', 'reloading'], true);
@@ -731,7 +742,18 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
 <section class="panel">
-<h2>Multi-IA — <?= esc($selectedName) ?></h2>
+<h2>IA de <?= esc($selectedName) ?></h2>
+<p class="muted">Tous les avatars utilisent exactement les mêmes fournisseurs, modèles, priorités et clés API. Seule l'activation de l'IA est propre à cet avatar.</p>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="page" value="modules">
+<label><input type="checkbox" name="avatarAiEnabled" value="1" <?= $avatarAiEnabled ? 'checked' : '' ?>> Activer l'IA pour cet avatar</label>
+<button name="action" value="set_avatar_ai_enabled">Enregistrer l'activation de cet avatar</button>
+</form>
+</section>
+<section class="panel">
+<h2>Configuration multi-IA globale</h2>
 <p class="muted">Une chaîne de moteurs IA distants, ordonnée par priorité. Le premier moteur actif et testé est utilisé ; le mode multi-IA tente le suivant si le précédent est indisponible ou limité. Tous les résidents peuvent dialoguer en IM avec cet avatar lorsqu'au moins un moteur public approuvé est activé.</p>
 <?php if ($multiSettings === null): ?>
 <div class="notice error">Paramètres multi-IA indisponibles : contrôleur à mettre à jour.</div>
@@ -750,7 +772,7 @@ foreach (['OpenRouter' => 'openrouter/free'] as $provider => $model) {
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <input type="hidden" name="page" value="modules">
 <fieldset><legend>Fonctionnement</legend>
-<label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($multiSettings['enabled']) ? 'checked' : '' ?>> Activer les conversations IA pour cet avatar</label>
+<label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($multiSettings['enabled']) ? 'checked' : '' ?>> Autoriser la chaîne de moteurs globale (pour les avatars dont l’IA est activée)</label>
 <label for="ai-mode">Mode de fonctionnement</label>
 <select id="ai-mode" name="aiMode">
 <option value="single" <?= ($multiSettings['mode'] ?? 'single') === 'single' ? 'selected' : '' ?>>IA unique — premier moteur actif et testé</option>
@@ -803,7 +825,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
 </div>
 <label for="multi-prompt">Consignes de l'assistant</label>
 <textarea id="multi-prompt" name="systemPrompt" rows="3" maxlength="600" required><?= esc((string)($multiSettings['systemPrompt'] ?? '')) ?></textarea>
-<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter doivent utiliser un modèle gratuit et réussir leur test. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
+<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter doivent utiliser un modèle gratuit et réussir leur test. Ce réglage est commun à tous les avatars. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
 <button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
