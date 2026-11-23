@@ -107,7 +107,8 @@ def create_bot(values, legacy_install):
                 "AvatarFirstName": values["firstName"],
                 "AvatarLastName": values["lastName"],
                 "AvatarPasswordEnv": "OSAI_AVATAR_PASSWORD",
-                "StartLocation": {"RegionName": values["region"], "Position": {"X": values["x"], "Y": values["y"], "Z": values["z"]}},
+                "StartLocation": {"Mode": "Region", "RegionName": values["region"], "Position": {"X": values["x"], "Y": values["y"], "Z": values["z"]}},
+                "FallbackToHome": True,
             },
             "Bot": {"EnableIM": True, "EnableLocalChat": True, "ReconnectEnabled": True},
         }
