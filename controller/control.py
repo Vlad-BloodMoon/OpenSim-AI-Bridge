@@ -340,9 +340,12 @@ def test_multi_ai_profile(install, values):
         key = (install / "ai-api-key.txt").read_text(encoding="utf-8").strip()
     else:
         raise ControlError("Configure a provider key before testing")
+    # OpenRouter's free router can pick a reasoning model. With only 24
+    # completion tokens, the entire budget may be spent on hidden reasoning
+    # and the API returns HTTP 200 with empty visible text.
     payload = json.dumps({"model": model, "messages": [
         {"role": "user", "content": "Reply with the single word OK."}],
-        "max_tokens": 24}).encode()
+        "max_tokens": 1024 if provider == "OpenRouter" else 64}).encode()
     class DenyRedirects(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             raise ControlError("Provider test redirected; test aborted")
@@ -351,11 +354,11 @@ def test_multi_ai_profile(install, values):
         endpoints[provider], data=payload, method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
-        with opener.open(request, timeout=15) as response:
+        with opener.open(request, timeout=35 if provider == "OpenRouter" else 15) as response:
             result = json.loads(response.read(8192))
             content = result["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
-                raise ControlError("The provider returned no text")
+                # Do not expose provider raw response, API keys or hidden reasoning.\n                reason = str(result.get("choices", [{}])[0].get("finish_reason", "unknown"))\n                raise ControlError("Provider returned no visible text (finish_reason=" + reason[:24] + "). Retry or choose another free model.")
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError,
             TypeError, KeyError, OSError) as exc:
         raise ControlError("Provider test failed. Check the model, key and quotas.") from exc
