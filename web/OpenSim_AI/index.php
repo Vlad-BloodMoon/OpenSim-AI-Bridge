@@ -647,7 +647,15 @@ textarea{resize:vertical}
 <?php if ($kb === null): ?>
 <div class="notice error">État documentaire indisponible : contrôleur à mettre à jour.</div>
 <?php else: ?>
-<p><strong>Synchronisation :</strong> <?= esc($kbRunning ? 'Indexation en cours' : 'À l’arrêt') ?></p>
+<?php
+$kbSyncLabel = $kbRunning ? 'Indexation en cours'
+    : (($kb['service'] ?? '') === 'failed' || ($kb['result'] ?? '') === 'exit-code'
+        ? 'Terminée avec erreurs'
+        : (($kb['result'] ?? '') === 'success' && !empty($kb['finishedAt'])
+            ? 'Terminée avec succès' : 'Pas de synchronisation récente confirmée'));
+?>
+<p><strong>Synchronisation :</strong> <?= esc($kbSyncLabel) ?></p>
+<?php if (!empty($kb['finishedAt'])): ?><p class="muted"><strong>Dernière fin :</strong> <?= esc($kb['finishedAt']) ?></p><?php endif ?>
 <p><strong>Fichier SQLite :</strong> <?= !empty($kb['database']) ? 'Présent' : 'Pas encore créé' ?></p>
 <table style="width:100%;text-align:left;border-spacing:0 .6rem">
 <thead><tr><th>Source</th><th>Pages / PDF</th><th>Passages</th></tr></thead>
