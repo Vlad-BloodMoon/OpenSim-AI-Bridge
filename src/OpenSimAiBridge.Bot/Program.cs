@@ -150,6 +150,14 @@ if (args.Length == 1 && args[0] == "--verify-im-chunks")
         Console.Error.WriteLine("Markdown tables must be readable in IM.");
         return 1;
     }
+    var sentenceCase = "Les vampires perdent quatre unités chaque nuit. " +
+        new string('x', 320) + ". Ils peuvent se protéger avec les objets prévus.";
+    var sentenceParts = ImReplyFormatter.Split(sentenceCase);
+    if (sentenceParts.Count < 2 || !sentenceParts[0].EndsWith("nuit.", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("An IM must prefer a sentence boundary before splitting.");
+        return 1;
+    }
     Console.WriteLine("Full-length UTF-8-safe Firestorm IM delivery checks passed.");
     return 0;
 }
