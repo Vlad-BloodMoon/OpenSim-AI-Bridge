@@ -79,3 +79,14 @@ Depuis **Maintenance générale**, l'administrateur peut choisir **Arrêter tous
 **Installation** : relancer `scripts/install-multibot.sh` depuis le nouvel artefact GitHub pour appliquer le contrôleur et ajouter le drop-in systemd de l'ancien service. Installer le PHP du même artefact. Ces opérations ne nécessitent pas d'arrêter les bots. Avant d'utiliser le bouton global, vérifier la présence du drop-in, des deux unités et des fichiers privés, puis effectuer un arrêt et une reprise en conditions contrôlées.
 
 **Attention :** pendant la maintenance, remplacer uniquement les DLL réellement partagées sous `/home/louna49400/OpenSim-AI-Bridge/`. Le script ne remplace aucune DLL automatiquement. Ne jamais supprimer `appsettings.json`, les mots de passe, ni les profils sous `/var/lib/opensim-ai-bridge/bots/`. La reprise peut échouer partiellement ; regarder les états réels avant de déclarer l'opération terminée.
+
+## Consommation RAM et CPU par service (23 novembre 2026)
+
+Dans **Tableau de bord → État du service**, chaque avatar sélectionné affiche désormais :
+- **Mémoire RAM (Mo)** : `systemctl show <service> --property=MemoryCurrent`, divisée par 1 048 576. La valeur inclut la mémoire comptabilisée par systemd pour le cgroup du service (pas uniquement la mémoire managée .NET).
+- **CPU (%)** : delta de `CPUUsageNSec` sur le temps monotone écoulé entre deux interrogations du **même service** dans le contrôleur Python. 100 % représente un cœur logique pleinement utilisé ; plusieurs cœurs peuvent produire plus de 100 %. Il s'agit d'une moyenne sur l'intervalle, pas d'un instantané de charge de tout le serveur.
+- Le cache des mesures CPU reste uniquement en mémoire dans le contrôleur, séparément pour `opensim-ai-bridge.service` et chaque service `opensim-ai-bridge@<id>.service`.
+- Le premier relevé, les compteurs indisponibles ou un bot arrêté donnent `—` ; une remise à zéro du compteur CPU après redémarrage ne crée pas de pourcentage négatif.
+- L'écran conserve son actualisation automatique toutes les 10 secondes.
+
+**Déploiement :** mettre à jour `controller/control.py` par le script d'installation multi-bots et le fichier Web PHP depuis le même artefact. Le script active `CPUAccounting=yes` et `MemoryAccounting=yes` pour les unités d'avatar à instances ainsi que via un drop-in pour l'ancienne unité BloodMoon AI. L'installation recharge systemd, **sans redémarrer les avatars existants**. Certaines valeurs peuvent rester indisponibles tant que les unités actives n'ont pas été redémarrées individuellement. Aucun redémarrage systématique n'est requis pour déployer la page Web.
