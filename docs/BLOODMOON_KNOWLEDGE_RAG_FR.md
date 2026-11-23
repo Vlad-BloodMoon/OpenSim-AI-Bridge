@@ -5,11 +5,14 @@
 ## Finalité
 Fournir aux avatars IA une base commune de documents publics BloodMoon, sans exécuter de modèle de langage local. Un même index documentaire sert tous les bots ; chaque avatar peut avoir des consignes de personnalité et des catégories spécialisées.
 
-## Sources initiales
-- Grille : https://bloodmoonpack.com/grid/ (accès à la grille, viewer, création de compte, événements, terrain, monnaie, etc.)
-- Roleplay : https://bloodmoonpack.com/roleplay/pages/guide.php?lang=fr (guide, races, malédiction, HUD, objets, potions, documents PDF) ; vérifier aussi les liens depuis les pages guides historiques
-- Marketplace : https://bloodmoonpack.com/Marketplace/ (aide, fonctionnement de la boutique et des livraisons)
-- Handbook : https://bloodmoonpack.com/OpenSim_Handbook/ (documentation publique technique)
+## Sources officielles initiales — confirmées par l'administrateur
+1. **BloodMoon Grid (portail de grille)** : https://bloodmoonpack.com/grid/
+2. **BloodMoon Roleplay (site principal)** : https://bloodmoonpack.com/
+3. **BloodMoon Marketplace** : https://bloodmoonpack.com/Marketplace/
+4. **OpenSim Handbook** : https://bloodmoonpack.com/OpenSim_Handbook/
+
+Ces quatre adresses constituent les racines de référence. **Ne pas confondre le portail /grid/ avec le site principal / du roleplay.** Ne pas supposer que /roleplay/ est le point d'entrée officiel ; suivre les pages et guides réellement liés depuis le site principal. Le robot d'indexation devra reconnaître la racine / comme réservée au roleplay dans la configuration des sources, tout en **excluant explicitement** les sous-chemins /grid/, /Marketplace/ et /OpenSim_Handbook/ afin d'éviter doublons et mélange des catégories. Il faudra aussi exclure les autres répertoires techniques ou privés hébergés sur ce domaine, et se limiter aux chemins publics vérifiés, plutôt que crawler tout le domaine.
+
 Ne jamais indexer : paramètres d'administration, secrets, sessions, profils privés, données personnelles ou tables SQL privées. Les pages publiques de joueurs ne doivent pas être indexées par défaut.
 
 ## Indexation légère
