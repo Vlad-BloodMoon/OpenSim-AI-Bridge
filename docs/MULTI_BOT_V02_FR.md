@@ -48,3 +48,16 @@ Ce script est prévu pour l'environnement pilote (compte Linux `louna49400`, ins
 ## Évolutions
 
 À venir : supprimer/archiver proprement un bot, changer le mot de passe, profils de permissions par avatar, moteurs FAQ distincts/partagés, traduction et IA distante avec quotas séparés.
+
+## Navigation de l'administration (23 novembre 2026)
+
+L'interface n'empile plus tous les paramètres sur une seule page. Le menu distingue quatre rubriques accessibles via des URLs internes contrôlées :
+
+- **Tableau de bord** : état du bot choisi, présence/région/coordonnées et démarrage/arrêt/Firestorm.
+- **Mes avatars** : grille compacte des comptes et formulaire d'ajout repliable, ouvert seulement lorsque nécessaire.
+- **Configuration** : région et XYZ de départ et options IM/chat/reconnexion du bot sélectionné.
+- **Modules IA** : emplacement réservé aux futures fonctions FAQ, traduction, fournisseurs distants, permissions et journaux. Les modules ne sont pas encore fonctionnels.
+
+Chaque requête POST inclut l'identifiant serveur du bot sélectionné et sa rubrique pour éviter d'agir involontairement sur le bot principal. Les données de formulaire sont traitées par le même backend PHP authentifié, sans aucun mot de passe renvoyé à la page.
+
+**À tester au déploiement :** passer d'un bot à l'autre via « Mes avatars » puis vérifier que les boutons et réglages ciblent le compte sélectionné, surtout après changement d'onglet.
