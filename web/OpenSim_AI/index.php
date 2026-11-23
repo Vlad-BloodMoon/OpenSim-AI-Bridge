@@ -184,7 +184,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($action === 'create_bot') {
             $page = 'avatars';
             $coords = [];
-            foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
+            foreach (['x' => 8192, 'y' => 8192, 'z' => 4096] as $axis => $limit) {
                 $n = filter_var($_POST[$axis] ?? null, FILTER_VALIDATE_INT,
                     ['options' => ['min_range' => 0, 'max_range' => $limit]]);
                 if ($n === false) { $error = 'Coordonnées invalides.'; break; }
@@ -302,7 +302,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $page = 'settings';
             $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
             $coords = [];
-            foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
+            foreach (['x' => 8192, 'y' => 8192, 'z' => 4096] as $axis => $limit) {
                 $raw = $_POST[$axis] ?? null;
                 $number = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => $limit]]);
                 if ($number === false) {
@@ -567,8 +567,8 @@ textarea{resize:vertical}
 <label for="new-region">Région de départ</label>
 <input type="text" id="new-region" name="newRegion" maxlength="80" value="BloodMoon_TEST" required>
 <div class="grid" style="margin:1rem 0">
-<div><label for="new-x">X</label><input type="number" id="new-x" name="x" min="0" max="256" value="128" required></div>
-<div><label for="new-y">Y</label><input type="number" id="new-y" name="y" min="0" max="256" value="128" required></div>
+<div><label for="new-x">X</label><input type="number" id="new-x" name="x" min="0" max="8192" value="128" required></div>
+<div><label for="new-y">Y</label><input type="number" id="new-y" name="y" min="0" max="8192" value="128" required></div>
 <div><label for="new-z">Z</label><input type="number" id="new-z" name="z" min="0" max="4096" value="25" required></div>
 </div>
 <button name="action" value="create_bot" <?= !$bots ? 'disabled' : '' ?>>Ajouter et connecter</button>
@@ -655,7 +655,7 @@ textarea{resize:vertical}
 <label for="region">Région de démarrage</label>
 <input type="text" id="region" name="region" maxlength="80" required value="<?= esc((string) ($botSettings['region'] ?? '')) ?>">
 <div class="grid" style="margin:1rem 0">
-<?php foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $max): ?>
+<?php foreach (['x' => 8192, 'y' => 8192, 'z' => 4096] as $axis => $max): ?>
 <div>
 <label for="position-<?= esc($axis) ?>">Position <?= strtoupper($axis) ?></label>
 <input type="number" id="position-<?= esc($axis) ?>" name="<?= esc($axis) ?>" min="0" max="<?= $max ?>" step="1" required value="<?= esc((string) ($botSettings[$axis] ?? 0)) ?>">
