@@ -48,6 +48,7 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 class PageText(HTMLParser):
+    VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "param", "source", "track", "wbr"}
     SKIP = {"script", "style", "noscript", "svg", "iframe", "form", "nav", "footer",
             "header", "aside", "template"}
     # Avoid indexing dynamic region directories, personal feeds and huge listings.
@@ -64,10 +65,13 @@ class PageText(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
-        if tag == "a" and not self.skip_depth and attrs.get("href"):
+        if tag == "a" and attrs.get("href"):
+            # Navigation menu links are authoritative discovery targets,
+            # even though menu text itself is excluded from the search index.
             self.links.append(attrs["href"])
         if self.skip_depth:
-            self.skip_depth += 1
+            if tag not in self.VOID:
+                self.skip_depth += 1
         elif tag in self.SKIP or any(k in (" " + attrs.get("id", "") + " " + attrs.get("class", "") + " ").lower() for k in self.SKIP_LABELS):
             self.skip_depth = 1
         elif tag == "title":
@@ -81,7 +85,8 @@ class PageText(HTMLParser):
 
     def handle_endtag(self, tag):
         if self.skip_depth:
-            self.skip_depth -= 1
+            if tag not in self.VOID:
+                self.skip_depth -= 1
         elif tag == "title" and self.title_depth:
             self.title_depth -= 1
 
