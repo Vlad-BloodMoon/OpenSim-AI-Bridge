@@ -221,10 +221,24 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <div class="grid">
 <div class="stat"><small>Service</small><strong><?= esc((string) ($state['active'] ?? 'inconnu')) ?></strong></div>
 <div class="stat"><small>Sous-état</small><strong><?= esc((string) ($state['substate'] ?? 'inconnu')) ?></strong></div>
-<div class="stat"><small>Démarrage automatique</small><strong><?= esc((string) ($state['enabled'] ?? 'inconnu')) ?></strong></div>
+<div class="stat"><small>Démarrage au reboot du serveur</small><strong><?= esc((string) ($state['enabled'] ?? 'inconnu')) ?></strong></div>
 <div class="stat"><small>Mode Firestorm</small><strong><?= !empty($state['maintenance']) ? 'Activé' : 'Désactivé' ?></strong></div>
 </div>
-<p class="muted">L'état « active » signifie que le processus tourne. Cela ne garantit pas encore la connexion de l'avatar à la grille.</p>
+<p class="muted">L'état « active » indique que le processus fonctionne. « disabled » concerne le démarrage au reboot, pas la reconnexion réseau de l'avatar.</p>
+<?php endif ?>
+</section>
+<section class="panel">
+<h2>Présence et position de l'avatar</h2>
+<?php $avatar = is_array($state['avatar'] ?? null) ? $state['avatar'] : null; ?>
+<?php if ($avatar !== null && ($avatar['connected'] ?? false) === true && is_array($avatar['position'] ?? null)): ?>
+<div class="grid">
+<div class="stat"><small>Connexion grille</small><strong>En ligne</strong></div>
+<div class="stat"><small>Région</small><strong><?= esc((string) ($avatar['region'] ?? 'Inconnue')) ?></strong></div>
+<div class="stat"><small>Position X / Y / Z</small><strong><?= esc(number_format((float) ($avatar['position']['x'] ?? 0), 2, '.', '')) ?> / <?= esc(number_format((float) ($avatar['position']['y'] ?? 0), 2, '.', '')) ?> / <?= esc(number_format((float) ($avatar['position']['z'] ?? 0), 2, '.', '')) ?></strong></div>
+<div class="stat"><small>Dernière mesure</small><strong><?= esc((string) ($avatar['ageSeconds'] ?? '?')) ?> s</strong></div>
+</div>
+<?php else: ?>
+<p class="muted">Position indisponible : le bot est arrêté, hors connexion, ou la version installée ne transmet pas encore les coordonnées. Une mise à jour du bot et du contrôleur est nécessaire pour l'affichage en direct.</p>
 <?php endif ?>
 </section>
 <section class="panel">
@@ -238,17 +252,19 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <?php endforeach ?>
 </div>
 </section>
+<?php if (!empty($state['maintenance'])): ?>
 <section class="panel">
-<h2>Reprendre après Firestorm</h2>
+<h2>Reconnecter le bot après Firestorm</h2>
 <p class="muted">Ferme complètement Firestorm avec le compte BloodMoon AI avant de relancer le bot.</p>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <fieldset><legend>Confirmation</legend>
 <label><input type="checkbox" name="viewer_closed" value="yes" required> Firestorm est déconnecté de ce compte.</label>
 </fieldset>
-<button name="action" value="resume" <?= $state === null ? 'disabled' : '' ?>>Désactiver le verrou et reprendre</button>
+<button name="action" value="resume" <?= $state === null ? 'disabled' : '' ?>>Réactiver BloodMoon AI</button>
 </form>
 </section>
+<?php endif ?>
 <section class="panel">
 <h2>Prochaines fonctionnalités</h2>
 <p class="muted">FAQ multilingue · Traduction BloodMoon · Autorisations UUID · Fournisseurs IA distants. Ces modules ne sont pas encore actifs.</p>
