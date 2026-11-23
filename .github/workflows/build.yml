@@ -6,6 +6,8 @@ on:
     paths:
       - 'src/**'
       - '.github/workflows/build.yml'
+      - 'scripts/**'
+      - 'deploy/**'
   pull_request:
     paths:
       - 'src/**'
@@ -46,11 +48,17 @@ jobs:
           mkdir -p dist/linux-x64/config
           cp config/appsettings.example.json dist/linux-x64/config/
           cp docs/INSTALLATION_V01_FR.md dist/linux-x64/
+          cp docs/SERVICE_SYSTEMD_V02_FR.md dist/linux-x64/
+          cp bot-password.example.txt dist/linux-x64/
+          mkdir -p dist/linux-x64/scripts dist/linux-x64/deploy/systemd
+          cp scripts/*.sh dist/linux-x64/scripts/
+          chmod +x dist/linux-x64/scripts/*.sh
+          cp deploy/systemd/*.example dist/linux-x64/deploy/systemd/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenSim-AI-Bridge-v0.1-linux-x64
+          name: OpenSim-AI-Bridge-v0.2-preview-linux-x64
           path: dist/linux-x64/
           if-no-files-found: error
           retention-days: 14
