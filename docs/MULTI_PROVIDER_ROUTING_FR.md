@@ -77,3 +77,26 @@ Prudence : les applications clientes n'ont pas toujours la même notion de conte
 - Ne pas confondre « API utilisable sans paiement initial » et « gratuité garantie ».
 - Ne pas écraser la clé Groq de production avec une clé OpenRouter.
 - Ne pas déployer une interface qui affiche multi-IA si le routeur .NET ne sait pas encore gérer le basculement.
+
+## Implémentation v0.4 en cours dans `main` (23 novembre 2026)
+
+Première tranche fonctionnelle **codée et testée via GitHub Actions, mais pas déployée sur robust-vm** :
+
+- `controller/provider_profiles.py` : validation stricte d'une liste ordonnée de 1 à 8 modèles et clés distinctes `ai-keys/groq.txt`, `openrouter.txt`, `openai.txt` avec mode privé 0600. La clé legacy `ai-api-key.txt` n'est pas déplacée ni effacée. Lors de la première lecture, le profil prioritaire reprend le fournisseur et le modèle de l'ancien bot, Groq si déjà configuré.
+- `controller/control.py` : commandes `get_multi_ai_settings`, `save_multi_ai_settings`, `test_multi_ai_profile`, liées au bon avatar avant lecture/écriture. Le navigateur ne peut **pas** attribuer lui-même le statut « testé ». Le test est un appel distant réel, lancé explicitement depuis l'admin, sur une liste fixe d'API, sans redirection HTTP ni secret retourné.
+- `web/OpenSim_AI/index.php` : interface multi-moteurs avec priorité ↑/↓, ajout et retrait jusqu'à 8 profils, activation, mode unique/auto, paramètres de requêtes, modèle/clé et bouton de test. Le formulaire UUID legacy n'est plus affiché. Les profils OpenAI restent possibles comme configuration mais **ne peuvent pas être approuvés pour les conversations publiques gratuites** à ce stade.
+- `src/OpenSimAiBridge.Bot/RemoteAiResponder.cs` : routeur dégradé vers les profils actifs, approuvés, avec clé, et à modèle public éligible (Groq ou modèle OpenRouter `:free`). Cache court de fournisseur indisponible, mémoire en RAM limitée à 6 échanges et 30 minutes par résident/avatar, extraits SQLite envoyés au moteur choisi, notification discrète sur basculement effectif. Le mode « IA unique » ne tente qu'un fournisseur.
+- `scripts/start-bot.sh` : injection des clés API de chaque fournisseur à partir de leurs fichiers privés ; migration sans écraser l'ancienne clé ni l'exposer dans les logs. Tests de non-régression `tests/test_provider_profiles.py`.
+
+**Limites de cette tranche** : pas de mesure de consommation officielle fournie par les API, pas de crédits automatiques, pas de synchronisation des quotas entre avatars, pas de persistance des conversations après redémarrage, et détection linguistique simple pour les notifications. La gratuité dépend de la configuration réelle du fournisseur, pas de notre seule validation locale. Les essais de OpenRouter sont à réaliser explicitement par le bouton après saisie d'une clé et enregistrement d'un profil désactivé ; seul un test réussi autorise son activation comme secours.
+
+### Mise en production recommandée
+
+1. Valider d'abord la réussite de GitHub Actions sur **le commit final** (compilation .NET 8, syntaxe PHP, `unittest`).
+2. Télécharger l'artefact de ce commit dans un **répertoire neuf** et contrôler tous les fichiers, sauvegarder la DLL actuelle + fichiers de configuration/clé privés et le Web.
+3. Utiliser la page « Maintenance générale » pour arrêter/verrouiller les bots uniquement. Pendant l'arrêt : remplacer le binaire et ses dépendances de publication (incluant SQLite), installer les nouveaux modules Python, scripts, services systemd et la nouvelle page Web. Préserver sans exception tous les `appsettings.json`, `ai-api-key.txt`, `bot-password.txt`, `data/` et tous les répertoires `/var/lib/opensim-ai-bridge/bots/`.
+4. Vérifier les permissions et la syntaxe `python3 -m py_compile`, `php -l`, `systemd-analyze verify`. Restaurer la flotte via le bouton et valider un IM Groq avec un résident avant de sauvegarder des profils supplémentaires.
+5. Avec la nouvelle page, conserver Groq en profil prioritaire. Saisir la clé OpenRouter dans un profil **désactivé**, enregistrer, cliquer sur « Tester le modèle enregistré », puis l'activer seulement si le test est concluant. Le test peut consommer un quota, voire un coût si un autre service facturable a été activé chez le fournisseur.
+6. Passer ensuite en « Multi-IA » pour tester la priorité et le repli en conditions contrôlées. Vérifier chaque avatar et les journaux avant de généraliser.
+
+**Ne pas** copier uniquement l'ancienne DLL : Microsoft.Data.Sqlite ajoute des dépendances natives publiées avec .NET. **Ne pas** démarrer avec une configuration partiellement migrée.
