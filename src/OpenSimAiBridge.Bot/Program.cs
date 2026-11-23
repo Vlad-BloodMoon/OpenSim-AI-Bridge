@@ -1,5 +1,26 @@
 using System.Text.Json;
+using System.Globalization;
 using LibreMetaverse;
+
+// CoreJ2K 2.4.x parses JPEG2000 encoder 'rate' using float.Parse without
+// specifying CultureInfo. The codec supplies dot-decimal rates (e.g. 2.8125),
+// which fails under fr-FR and other comma-decimal Linux locales.
+// Use invariant formatting and parsing throughout this headless protocol client.
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
+// Offline regression test: run in CI without connecting to the grid or reading secrets.
+if (args.Length == 1 && args[0] == "--verify-invariant-rate")
+{
+    var rate = float.Parse("2.8125", CultureInfo.CurrentCulture);
+    if (rate != 2.8125f)
+    {
+        Console.Error.WriteLine("Culture regression: CoreJ2K rate was misparsed.");
+        return 1;
+    }
+    Console.WriteLine($"CoreJ2K numeric parsing ready: {rate.ToString(CultureInfo.InvariantCulture)}");
+    return 0;
+}
 
 // Prototype V0.1: static IM commands only, no paid AI, no ROBUST connection.
 // Never place avatar passwords in configuration files or source code.
