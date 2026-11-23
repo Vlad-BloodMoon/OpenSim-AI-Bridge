@@ -115,6 +115,10 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
             throw new InvalidOperationException("The shared Groq quota is not enforced.");
         if (!botA.TryReserve("OpenRouter", t, 2, out _))
             throw new InvalidOperationException("A Groq exhaustion must not block OpenRouter.");
+        if (!botA.TryReserve("Gemini", t, 2, out _) ||
+            !botB.TryReserve("Gemini", t, 2, out _) ||
+            botA.TryReserve("Gemini", t, 2, out _))
+            throw new InvalidOperationException("Multiple Gemini profiles must share one provider quota.");
         botA.RecordCooldown("OpenRouter", t, TimeSpan.FromMinutes(3));
         if (botB.TryReserve("OpenRouter", t, 2, out _))
             throw new InvalidOperationException("The shared provider cooldown is not enforced.");
