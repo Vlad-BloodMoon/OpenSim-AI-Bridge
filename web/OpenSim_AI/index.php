@@ -85,6 +85,8 @@ function request_control(string $action, bool $confirm = false, ?array $settings
 
 $requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
 $selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
+$pageRaw = $_POST['page'] ?? $_GET['page'] ?? 'dashboard';
+$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'modules'], true) ? $pageRaw : 'dashboard';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -135,6 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
         if ($action === 'create_bot') {
+            $page = 'avatars';
             $coords = [];
             foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
                 $n = filter_var($_POST[$axis] ?? null, FILTER_VALIDATE_INT,
@@ -163,6 +166,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif ($action === 'save_settings') {
+            $page = 'settings';
             $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
             $coords = [];
             foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
@@ -195,6 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
             }
         } elseif (in_array($action, $allowed, true)) {
+            $page = 'dashboard';
             if ($action === 'resume' && ($_POST['viewer_closed'] ?? '') !== 'yes') {
                 $error = 'Confirme d’abord la fermeture de Firestorm.';
             } else {
@@ -282,6 +287,16 @@ details.folded[open]>summary:after{content:"−"}
 details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;margin-left:auto}
 .folded-content{padding:0 1.5rem 1.5rem}
 @media(max-width:600px){main{margin:1.4rem auto}.avatar-list{grid-template-columns:1fr}details.folded>summary{padding:1rem}details.folded>summary small{display:none}.folded-content{padding:0 1rem 1rem}}
+
+.admin-menu{display:flex;gap:.4rem;flex-wrap:wrap;align-items:center;margin:1rem 0 1.4rem;padding:.45rem;background:#151d32;border:1px solid #2b3752;border-radius:13px}
+.admin-menu a{color:#cbd6ec;text-decoration:none;padding:.7rem 1rem;border-radius:10px;font-size:.95rem;font-weight:600}
+.admin-menu a:hover{background:#253554}
+.admin-menu a[aria-current="page"]{background:#416eec;color:#fff}
+.quick-switch{margin-bottom:.5rem}
+.module-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:.9rem}
+.module-grid .stat strong{display:block;font-size:1rem}
+.module-grid .stat small{margin-top:.4rem}
+@media(max-width:600px){.admin-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem}.admin-menu a{text-align:center;padding:.65rem .3rem;font-size:.8rem}}
 </style>
 </head>
 <body>
@@ -292,6 +307,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="page" value="<?= esc($page) ?>">
 <button class="secondary" name="action" value="logout">Déconnexion</button>
 </form>
 <?php endif ?>
@@ -310,13 +326,19 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </form>
 </section>
 <?php else: ?>
+<nav class="admin-menu" aria-label="Menu principal">
+<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','modules'=>'Modules IA'] as $p => $label): ?>
+<a href="?page=<?= esc($p) ?>&amp;bot=<?= esc($selectedBot) ?>" <?= $page === $p ? 'aria-current="page"' : '' ?>><?= esc($label) ?></a>
+<?php endforeach ?>
+</nav>
+<?php if ($page === 'avatars'): ?>
 
 <section class="panel">
 <div class="avatar-heading"><div><h2>Mes avatars</h2><p class="muted">Choisis un avatar pour gérer son état et ses paramètres.</p></div><a class="add-link" href="#ajouter-avatar">+ Ajouter</a></div>
 <?php if ($bots): ?>
 <nav class="avatar-list" aria-label="Sélection des avatars">
 <?php foreach ($bots as $bot): ?>
-<a class="avatar-item <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>" href="?bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>" <?= $selectedBot === ($bot['id'] ?? '') ? 'aria-current="page"' : '' ?>>
+<a class="avatar-item <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>" href="?page=dashboard&amp;bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>" <?= $selectedBot === ($bot['id'] ?? '') ? 'aria-current="page"' : '' ?>>
 <span class="avatar-dot" aria-hidden="true">●</span><span class="avatar-text"><strong><?= esc(trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''))) ?></strong><small><?= esc((string) ($bot['region'] ?? '')) ?></small></span><span aria-hidden="true">›</span>
 </a>
 <?php endforeach ?>
@@ -358,6 +380,14 @@ foreach ($bots as $bot) {
   }
 }
 ?>
+<?php endif ?>
+<?php if ($page === 'dashboard'): ?>
+<section class="panel quick-switch">
+<div class="avatar-heading">
+<div><h2>Avatar sélectionné : <?= esc($selectedName) ?></h2><p class="muted">Commandes et présence de cet avatar uniquement.</p></div>
+<a class="add-link" href="?page=avatars&amp;bot=<?= esc($selectedBot) ?>">Changer d'avatar</a>
+</div>
+</section>
 <div class="chosen-bot"><span class="avatar-dot">●</span><div><small class="muted">Tableau de bord</small><h2><?= esc($selectedName) ?></h2></div></div>
 <section class="panel">
 <h2>État du service</h2>
@@ -413,7 +443,10 @@ foreach ($bots as $bot) {
 </form>
 </section>
 <?php endif ?>
-<details class="panel folded" id="configuration"><summary>Configuration de l'avatar <small>Région, coordonnées et comportement</small></summary><div class="folded-content">
+<?php endif ?>
+<?php if ($page === 'settings'): ?>
+<section class="panel"><h2>Configuration de <?= esc($selectedName) ?></h2><p class="muted">Les modifications sont appliquées au prochain démarrage de cet avatar uniquement. <a href="?page=avatars&amp;bot=<?= esc($selectedBot) ?>">Choisir un autre avatar</a></p></section>
+<details class="panel folded" id="configuration" open><summary>Configuration de l'avatar <small>Région, coordonnées et comportement</small></summary><div class="folded-content">
 <p class="muted">Choisis la région et les coordonnées où <?= esc($selectedName) ?> apparaîtra à sa prochaine connexion. La sauvegarde ne déplace pas immédiatement l'avatar connecté : un redémarrage du bot applique ces paramètres.</p>
 <?php if ($botSettings === null): ?>
 <p class="muted">Les paramètres ne sont pas encore accessibles. Mets à jour le contrôleur local pour activer leur édition.</p>
@@ -440,7 +473,17 @@ foreach ($bots as $bot) {
 </form>
 <?php endif ?>
 </div></details>
-<p class="muted" style="font-size:.83rem;text-align:center">À venir : FAQ, traduction, autorisations UUID et fournisseurs IA distants.</p>
+<?php endif ?>
+<?php if ($page === 'modules'): ?>
+<section class="panel"><h2>Modules et fonctionnalités</h2>
+<p class="muted">Cette rubrique accueillera les réglages individuels ou partagés de chaque assistant. Les fonctionnalités ci-dessous sont prévues, mais pas encore activées.</p>
+<div class="module-grid">
+<div class="stat"><strong>FAQ et base de connaissances</strong><small>Réponses éditables, documents, comportement par bot</small></div>
+<div class="stat"><strong>Traduction</strong><small>Intégration de l'API de traduction BloodMoon</small></div>
+<div class="stat"><strong>IA distante</strong><small>Fournisseurs et quotas propres à chaque avatar</small></div>
+<div class="stat"><strong>Autorisations et journaux</strong><small>UUID autorisés, historique et diagnostic</small></div>
+</div></section>
+<?php endif ?>
 <?php endif ?>
 <footer>Aucune clé API ou mot de passe avatar n'est stocké dans ce répertoire Web.</footer>
 </main>
