@@ -54,6 +54,9 @@ jobs:
           LC_ALL: fr_FR.UTF-8
         run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-invariant-rate
 
+      - name: Verify remote AI safe defaults without API credentials
+        run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-ai-safety
+
       - name: Publish for Linux x64 (framework-dependent)
         run: |
           dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
