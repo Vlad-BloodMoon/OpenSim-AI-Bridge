@@ -314,6 +314,13 @@ button:focus-visible,input:focus-visible{outline:3px solid #91baff;outline-offse
 a.bot-link{color:#dbe7ff;text-decoration:none;background:#273a62;border:1px solid #3a4f7c;border-radius:10px;padding:.6rem .9rem}a.bot-link.selected{background:#426ce0;color:#fff}input[type=text],input[type=number]{width:100%;padding:.75rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.4rem 0}input[type=password]{width:100%;padding:.85rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.5rem 0 1.2rem}
 label{display:block}
 .notice{padding:.9rem 1rem;border-radius:11px;margin:1rem 0;background:#1b3a37}
+/* Acknowledgements vanish after 6 seconds; warnings and errors remain visible. */
+.notice.success{overflow:hidden;animation:success-notice-dismiss 6s ease-in forwards}
+@keyframes success-notice-dismiss{
+  0%,78%{opacity:1;max-height:180px;padding:.9rem 1rem;margin:1rem 0;visibility:visible}
+  99%{opacity:0;max-height:0;padding:0 1rem;margin:0;visibility:visible}
+  100%{opacity:0;max-height:0;padding:0;border-width:0;margin:0;visibility:hidden}
+}
 .error{background:#512633}
 fieldset{border:1px solid #3c4968;border-radius:12px;margin:1rem 0}
 legend{padding:0 .5rem}
@@ -377,7 +384,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 <?php endif ?>
 </header>
 <?php if ($authenticated && !empty($fleet['maintenance'])): ?><div class="notice error">Maintenance générale active. <a href="?page=maintenance">Gérer les services</a></div><?php endif ?>
-<?php if ($message !== ''): ?><div class="notice" role="status"><?= esc($message) ?></div><?php endif ?>
+<?php if ($message !== ''): ?><div class="notice success" role="status"><?= esc($message) ?></div><?php endif ?>
 <?php if ($error !== ''): ?><div class="notice error" role="alert"><?= esc($error) ?></div><?php endif ?>
 <?php if (!$authenticated): ?>
 <section class="panel">
