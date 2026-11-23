@@ -39,12 +39,12 @@ PRIVATE_PARTS = (
     "my-", "user", "player", "member", "stats", "attack", "souls",
 )
 IGNORE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".css", ".js", ".json", ".xml", ".zip", ".oar", ".iar", ".pdf", ".mp4", ".woff", ".ttf")
-MAX_RESPONSE_BYTES = 1_500_000
+MAX_RESPONSE_BYTES = 8_000_000
 MAX_PDF_BYTES = 12_000_000
 MAX_PDF_PAGES = 60
 MAX_SITE_PAGES = 2500
 MAX_PDF_DOCUMENTS = 300
-MAX_TEXT_CHARS = 180_000
+MAX_TEXT_CHARS = 600_000
 MAX_CHUNK_CHARS = 1300
 DEFAULT_DB = Path("/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.db")
 
@@ -146,9 +146,13 @@ def approved(source, url):
     if any(any(p == x or p.startswith(x + "-") or p.startswith(x + ".") for x in PRIVATE_PARTS) for p in pieces):
         return None
     if source == "grid":
+        if path.lower() in {"/grid/join.php", "/grid/events/add.php", "/grid/events/my-events.php"}:
+            return None
         return value if path.startswith("/grid/") else None
     if source == "marketplace":
-        # Catalog help and public descriptions only; never checkout or account functions.
+        # Skip personalized endpoints that redirect to a login page.
+        if path.lower() in {"/marketplace/favorites.php", "/marketplace/seller.php"}:
+            return None
         return value if path.startswith("/Marketplace/") else None
     if source == "handbook":
         return value if path.startswith("/OpenSim_Handbook/") else None
@@ -258,7 +262,7 @@ def extract_pdf(pdf_bytes):
                               text=True, timeout=15, check=False)
         if info.returncode:
             raise ValueError("Cannot inspect guide PDF")
-        pages = re.search(r"^Pages:\\s*(\\d+)", info.stdout, re.MULTILINE)
+        pages = re.search(r"^Pages:\s*(\d+)", info.stdout, re.MULTILINE)
         if not pages or int(pages.group(1)) > MAX_PDF_PAGES:
             raise ValueError("Guide PDF exceeds page limit")
         result = subprocess.run(["/usr/bin/pdftotext", "-layout", "-enc", "UTF-8",
