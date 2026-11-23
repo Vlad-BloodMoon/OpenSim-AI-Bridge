@@ -226,6 +226,13 @@ $status = $authenticated ? request_control('status', false, null, $selectedBot) 
 $state = is_array($status['result'] ?? null) ? $status['result'] : null;
 $settingsResult = $authenticated ? request_control('get_settings', false, null, $selectedBot) : null;
 $botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
+$selectedName = 'Avatar';
+foreach ($bots as $bot) {
+    if (($bot['id'] ?? '') === $selectedBot) {
+        $selectedName = trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''));
+        break;
+    }
+}
 ?>
 <!doctype html>
 <html lang="fr">
@@ -371,15 +378,6 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </form>
 </div>
 </details>
-<?php
-$selectedName = 'Avatar';
-foreach ($bots as $bot) {
-  if (($bot['id'] ?? '') === $selectedBot) {
-    $selectedName = trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''));
-    break;
-  }
-}
-?>
 <?php endif ?>
 <?php if ($page === 'dashboard'): ?>
 <section class="panel quick-switch">
