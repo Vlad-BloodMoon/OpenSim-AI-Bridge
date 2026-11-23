@@ -29,6 +29,12 @@ install -d -o root -g root -m 0711 /var/lib/opensim-ai-bridge/bots
 install -o root -g root -m 0644 "$WORK/controller/control.py" /usr/local/libexec/opensim-ai-bridge/control.py
 install -o root -g root -m 0644 "$WORK/controller/multi_bot.py" /usr/local/libexec/opensim-ai-bridge/multi_bot.py
 
+# Keep the working bot binary untouched; install only its updated launch script.
+# This adds secure loading of a per-avatar AI key at the next bot restart.
+if [[ -f "$WORK/scripts/start-bot.sh" ]]; then
+  install -o "$USER_NAME" -g "$USER_NAME" -m 0750 "$WORK/scripts/start-bot.sh" "$BASE/scripts/start-bot.sh"
+fi
+
 sed -e "s|@BOT_USER@|$USER_NAME|g" -e "s|@INSTALL_DIR@|$BASE|g" \
   "$WORK/deploy/systemd/opensim-ai-bridge@.service.example" \
   > /etc/systemd/system/opensim-ai-bridge@.service
