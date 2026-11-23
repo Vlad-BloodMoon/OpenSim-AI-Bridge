@@ -405,7 +405,8 @@ def knowledge_status(install):
 
 def knowledge_refresh(install):
     unit = "opensim-ai-bridge-knowledge.service"
-    if service_state(unit)["active"] == "active":
+    if service_state(unit)["active"] in ("active", "activating", "reloading"):
+        # A oneshot service remains "activating" while its long job runs.
         return {"alreadyRunning": True}
     # Start asynchronous, independent systemd service, never in the Web worker.
     result = subprocess.run(
