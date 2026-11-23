@@ -35,6 +35,15 @@ public sealed class KnowledgeSearch
 
     private static readonly string[] CurseWords = { "malédiction", "malediction", "curse", "cursed" };
     private static readonly string[] VampireWords = { "vampire", "vampires" };
+    // The grid and the roleplay game share the name BloodMoon. Do not assume
+    // a generic question about "rules" relates to roleplay.
+    private static readonly string[] GridGovernanceWords = {
+        "rgpd", "gdpr", "privacy", "confidentialité", "confidentialite",
+        "données personnelles", "donnees personnelles", "terms of service",
+        "conditions d'utilisation", "règlement de la grille", "reglement de la grille",
+        "règles de la grille", "regles de la grille", "grid rules",
+        "politique de confidentialité", "politique de confidentialite"
+    };
 
     private static string[] SearchTerms(string question)
     {
@@ -62,7 +71,7 @@ public sealed class KnowledgeSearch
     private static bool ContainsAny(string text, IEnumerable<string> words) =>
         words.Any(w => text.Contains(w, StringComparison.OrdinalIgnoreCase));
 
-    private static double Score(KnowledgeHit hit, IReadOnlyList<string> words, bool curseQuestion)
+    private static double Score(KnowledgeHit hit, IReadOnlyList<string> words, bool curseQuestion, bool governanceQuestion)
     {
         var title = hit.Title;
         var url = hit.Url;
@@ -87,6 +96,16 @@ public sealed class KnowledgeSearch
             if (ContainsAny(url, new[] { "_fr.pdf", "/fr/", "-fr.pdf", "francais", "french" })) score += 30;
             if (ContainsAny(url, new[] { "_gb.pdf", "_en.pdf" })) score -= 10;
         }
+        if (governanceQuestion)
+        {
+            // Grid governance/legal/privacy documentation outranks RP fiction.
+            if (hit.Source.Equals("grid", StringComparison.OrdinalIgnoreCase)) score += 115;
+            if (ContainsAny(title, GridGovernanceWords) || ContainsAny(url, new[] {
+                "privacy", "confidential", "rgpd", "rules", "reglement", "terms",
+                "legal", "mentions-legales", "politique"
+            })) score += 75;
+            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase)) score -= 90;
+        }
         return score;
     }
 
@@ -96,7 +115,8 @@ public sealed class KnowledgeSearch
         if (expression is null || !File.Exists(path))
             return Array.Empty<KnowledgeHit>();
         var terms = SearchTerms(question);
-        var curseQuestion = terms.Any(x => CurseWords.Contains(x, StringComparer.Ordinal));
+        var governanceQuestion = ContainsAny(question, GridGovernanceWords);
+        var curseQuestion = !governanceQuestion && terms.Any(x => CurseWords.Contains(x, StringComparer.Ordinal));
         limit = Math.Clamp(limit, 1, 4);
         try
         {
@@ -135,7 +155,7 @@ public sealed class KnowledgeSearch
             return candidates.Select((hit, index) => new {
                     Hit = hit,
                     Index = index,
-                    Rank = Score(hit, terms, curseQuestion)
+                    Rank = Score(hit, terms, curseQuestion, governanceQuestion)
                 })
                 .OrderByDescending(x => x.Rank).ThenBy(x => x.Index)
                 .GroupBy(x => x.Hit.Url, StringComparer.OrdinalIgnoreCase)
