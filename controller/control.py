@@ -19,7 +19,7 @@ import time
 import multi_bot
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot", "fleet_status", "fleet_stop", "fleet_resume"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume"))
 MAX_REQUEST = 4096
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -286,7 +286,7 @@ def fleet_resume(confirmed, legacy_install):
     return fleet_status()
 
 
-def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None):
+def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
@@ -296,8 +296,15 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
         return fleet_stop(confirm)
     if command == "fleet_resume":
         return fleet_resume(confirm, install)
-    if FLEET_LOCK.exists() and command in ("create_bot", "start", "restart", "resume"):
+    if FLEET_LOCK.exists() and command in ("create_bot", "delete_bot", "start", "restart", "resume"):
         raise ControlError("Global maintenance active")
+    if command == "delete_bot":
+        if not confirm:
+            raise ControlError("Confirm avatar removal")
+        try:
+            return multi_bot.delete_bot(bot_id, expected_name)
+        except multi_bot.BotRegistryError as exc:
+            raise ControlError(str(exc)) from exc
     if command == "create_bot":
         try:
             return multi_bot.create_bot(credentials, install)
@@ -371,9 +378,9 @@ def handle(client, allowed_uid, lock, install):
         return {"ok": False, "error": "Malformed request"}
     try:
         msg = json.loads(buf.split(b"\n", 1)[0])
-        if not isinstance(msg, dict) or set(msg) - {"action", "confirm", "settings", "botId", "credentials"}:
+        if not isinstance(msg, dict) or set(msg) - {"action", "confirm", "settings", "botId", "credentials", "expectedName"}:
             raise ControlError("Invalid request")
-        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install, msg.get("settings"), msg.get("botId", "main"), msg.get("credentials"))
+        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install, msg.get("settings"), msg.get("botId", "main"), msg.get("credentials"), msg.get("expectedName"))
         return {"ok": True, "result": result}
     except (ValueError, TypeError, ControlError, multi_bot.BotRegistryError) as exc:
         return {"ok": False, "error": str(exc)}
