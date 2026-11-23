@@ -761,7 +761,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php
 $profiles = is_array($multiSettings['profiles'] ?? null) ? $multiSettings['profiles'] : [];
 $providersAlready = array_column($profiles, 'provider');
-foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-3-flash-preview'] as $provider => $model) {
+foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-3.5-flash-lite'] as $provider => $model) {
     if (!in_array($provider, $providersAlready, true))
         $profiles[] = ['id' => strtolower($provider), 'provider' => $provider, 'model' => $model,
                        'enabled' => false, 'verified' => false, 'hasKey' => false];
@@ -825,7 +825,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
 </div>
 <label for="multi-prompt">Consignes de l'assistant</label>
 <textarea id="multi-prompt" name="systemPrompt" rows="3" maxlength="600" required><?= esc((string)($multiSettings['systemPrompt'] ?? '')) ?></textarea>
-<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter et Gemini doivent utiliser un modèle gratuit et réussir leur test. Ce réglage est commun à tous les avatars. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
+<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Tu peux ajouter plusieurs modèles par fournisseur, jusqu’à 16 profils au total. Les profils OpenRouter et Gemini doivent utiliser un modèle gratuit et réussir leur test. Ce réglage est commun à tous les avatars. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
 <button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
@@ -849,7 +849,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
   }
   var add = document.getElementById('ai-add-profile');
   if (add) add.addEventListener('click', function () {
-    if (list.querySelectorAll('.ai-profile').length >= 8) {
+    if (list.querySelectorAll('.ai-profile').length >= 16) {
       alert('Maximum huit moteurs par avatar.');
       return;
     }
