@@ -98,6 +98,37 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
     return 0;
 }
 
+// Offline regression: two separate avatars share one provider's durable budget.
+if (args.Length == 1 && args[0] == "--verify-shared-quota")
+{
+    var dir = Path.Combine(Path.GetTempPath(), "osai-quota-test-" + Guid.NewGuid().ToString("N"));
+    Directory.CreateDirectory(dir);
+    try
+    {
+        var file = Path.Combine(dir, "quota.db");
+        var botA = new SharedProviderQuota(file);
+        var botB = new SharedProviderQuota(file);
+        var t = DateTimeOffset.FromUnixTimeSeconds(3600L * 100000);
+        if (!botA.TryReserve("Groq", t, 2, out _) ||
+            !botB.TryReserve("Groq", t, 2, out _) ||
+            botA.TryReserve("Groq", t, 2, out _))
+            throw new InvalidOperationException("The shared Groq quota is not enforced.");
+        if (!botA.TryReserve("OpenRouter", t, 2, out _))
+            throw new InvalidOperationException("A Groq exhaustion must not block OpenRouter.");
+        botA.RecordCooldown("OpenRouter", t, TimeSpan.FromMinutes(3));
+        if (botB.TryReserve("OpenRouter", t, 2, out _))
+            throw new InvalidOperationException("The shared provider cooldown is not enforced.");
+        if (!botA.TryReserve("Groq", t.AddHours(1), 2, out _))
+            throw new InvalidOperationException("A new hourly bucket must allow fresh requests.");
+        Console.WriteLine("Shared provider quota and automatic fallback preconditions passed.");
+        return 0;
+    }
+    finally
+    {
+        try { Directory.Delete(dir, true); } catch (IOException) { }
+    }
+}
+
 // Static free IM commands remain available even when remote AI is off.
 // Never place avatar passwords in configuration files or source code.
 var configPath = args.Length > 0 ? args[0] : "appsettings.json";
