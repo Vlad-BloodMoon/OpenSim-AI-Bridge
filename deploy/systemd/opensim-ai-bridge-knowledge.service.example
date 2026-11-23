@@ -1,0 +1,28 @@
+[Unit]
+Description=BloodMoon AI — refresh public knowledge index (HTML and Roleplay guide PDFs)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=@BOT_USER@
+Group=@BOT_USER@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=/usr/bin/python3 @INSTALL_DIR@/knowledge/knowledge_cli.py import --source all --max-pages 1500
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=@INSTALL_DIR@/data
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
