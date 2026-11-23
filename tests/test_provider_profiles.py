@@ -9,7 +9,7 @@ import provider_profiles
 class MultiProviderConfigurationTests(unittest.TestCase):
     def settings(self):
         return {
-            "enabled": True, "mode": "single",
+            "enabled": True, "mode": "auto",
             "profiles": [
                 {"id": "primary", "provider": "Groq", "model": "openai/gpt-oss-20b",
                  "enabled": True, "verified": True, "apiKey": ""}
@@ -20,7 +20,7 @@ class MultiProviderConfigurationTests(unittest.TestCase):
 
     def test_legacy_groq_preserved(self):
         c = provider_profiles.normalize(self.settings())
-        self.assertEqual(c["Mode"], "single")
+        self.assertEqual(c["Mode"], "auto")
         self.assertEqual(c["Profiles"][0]["ApiKeyEnv"], "OSAI_GROQ_API_KEY")
 
     def test_auto_with_two_free_providers(self):
