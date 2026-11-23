@@ -761,7 +761,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php
 $profiles = is_array($multiSettings['profiles'] ?? null) ? $multiSettings['profiles'] : [];
 $providersAlready = array_column($profiles, 'provider');
-foreach (['OpenRouter' => 'openrouter/free'] as $provider => $model) {
+foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-2.5-flash-lite'] as $provider => $model) {
     if (!in_array($provider, $providersAlready, true))
         $profiles[] = ['id' => strtolower($provider), 'provider' => $provider, 'model' => $model,
                        'enabled' => false, 'verified' => false, 'hasKey' => false];
@@ -799,7 +799,7 @@ foreach (['OpenRouter' => 'openrouter/free'] as $provider => $model) {
 <div class="grid">
 <div><label>Fournisseur</label>
 <select data-field="provider" class="ai-provider-select">
-<?php foreach (['Groq', 'OpenRouter', 'OpenAI'] as $provider): ?>
+<?php foreach (['Groq', 'OpenRouter', 'Gemini', 'OpenAI'] as $provider): ?>
 <option value="<?= esc($provider) ?>" <?= ($entry['provider'] ?? '') === $provider ? 'selected' : '' ?>><?= esc($provider) ?></option>
 <?php endforeach ?>
 </select></div>
@@ -825,7 +825,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
 </div>
 <label for="multi-prompt">Consignes de l'assistant</label>
 <textarea id="multi-prompt" name="systemPrompt" rows="3" maxlength="600" required><?= esc((string)($multiSettings['systemPrompt'] ?? '')) ?></textarea>
-<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter doivent utiliser un modèle gratuit et réussir leur test. Ce réglage est commun à tous les avatars. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
+<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter et Gemini doivent utiliser un modèle gratuit et réussir leur test. Ce réglage est commun à tous les avatars. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
 <button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
@@ -868,7 +868,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
       '<div class="grid"><div><label>Fournisseur</label>' +
       '<select data-field="provider" class="ai-provider-select">' +
       '<option value="Groq">Groq</option><option value="OpenRouter">OpenRouter</option>' +
-      '<option value="OpenAI">OpenAI</option></select></div>' +
+      '<option value="Gemini">Gemini</option><option value="OpenAI">OpenAI</option></select></div>' +
       '<div><label>Modèle</label><input type="text" data-field="model" required maxlength="100" value="openai/gpt-oss-20b"></div></div>' +
       '<label><input type="checkbox" data-field="enabled" value="1"> Activer dans la chaîne</label>' +
       '<label>Clé API (facultative si déjà enregistrée pour le fournisseur)</label>' +
