@@ -114,3 +114,13 @@ Le service démarre depuis `OSAI_INSTALL_DIR` et charge l'unique fichier global 
 **Sécurité** : les quotas de chaque API sont partagés entre avatars sur le compte du fournisseur même si les limites applicatives sont encore **par processus/avatar**. Ne pas prétendre que les compteurs persistants ou le plafond commun inter-avatars sont déjà implémentés : une prochaine itération devra introduire un compteur partagé et une protection globale avant de déployer des dizaines de bots.
 
 **Remarque** : cette décision remplace toutes les mentions précédentes de configuration des fournisseurs *par avatar* dans les phases v0.4 ; la configuration par avatar n'inclut plus que l'activation de son IA.
+
+## Quotas partagés entre avatars et mode par défaut (23 novembre 2026)
+
+**Le mode par défaut est désormais `auto` / multi-IA.** Le mode `single` (IA unique) est réservé à un test volontaire d'un seul moteur. Même avec un seul fournisseur initialement configuré, on reste en mode automatique et les fournisseurs supplémentaires validés prendront ensuite le relais dans l'ordre ↑/↓.
+
+Le composant `SharedProviderQuota.cs` utilise `Microsoft.Data.Sqlite` et un fichier commun `data/ai-provider-quotas.db` pour les réservations **avant chaque requête**, à l'échelle de **tous les processus avatars**. Les réservations sont transactionnelles, persistantes après redémarrage et enregistrées par fournisseur, séparément : 30 tentatives maximum par fournisseur et par heure UTC, avec refroidissement partagé après erreur 429 ou panne. La limite de 30 est une précaution applicative initiale, non une représentation des quotas réels de Groq/OpenRouter ; les offres peuvent être plus strictes. Lorsqu'un moteur ne peut plus être appelé, en mode `auto` le système essaie le suivant si sa propre réservation réussit. Une base absente est initialisée ; si elle est inaccessible ou verrouillée, on n'appelle **aucun** moteur nécessitant sa réservation (fail-closed), mais on ne dépasse pas le quota. Pas d'appel payant automatique.
+
+Les limites générales anti-abus par processus/avatar (maxRequestsPerHour et délai entre deux demandes) restent distinctes des quotas individuels des fournisseurs et ne sont **pas** contournées par un changement de moteur. Dans l'avenir, un seuil configurable global plus fin, des quotas quotidiens/minute, et la lecture d'en-têtes exacts des fournisseurs pourront être ajoutés.
+
+Validation : `--verify-shared-quota` simule deux avatars sur la même base, l'épuisement de Groq et la disponibilité indépendante d'OpenRouter, le cooldown partagé et le renouvellement de l'heure. Ce test s'exécute sans aucune connexion réseau ni clé.
