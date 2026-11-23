@@ -52,6 +52,7 @@ public sealed class RemoteAiResponder : IDisposable
     private readonly object sync = new();
     private readonly SemaphoreSlim concurrency = new(1, 1);
     private readonly KnowledgeSearch knowledge;
+    private readonly SharedProviderQuota sharedQuota;
     private DateTimeOffset hourStart = DateTimeOffset.UtcNow;
     private int usedThisHour;
 
@@ -59,6 +60,7 @@ public sealed class RemoteAiResponder : IDisposable
     {
         this.settings = settings;
         knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
+        sharedQuota = new SharedProviderQuota(SharedProviderQuota.DefaultPath());
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
         legacyKey = Environment.GetEnvironmentVariable(settings.ApiKeyEnv);
     }
@@ -193,6 +195,17 @@ public sealed class RemoteAiResponder : IDisposable
                 if (string.IsNullOrWhiteSpace(key) || !Endpoints.TryGetValue(profile.Provider, out var endpoint))
                     continue;
 
+                // Multi-avatar admission is shared by provider, never by avatar.
+                // A provider's local budget/cooldown does NOT stop the conversation:
+                // in auto mode the next eligible provider is tried immediately.
+                if (Multi && !sharedQuota.TryReserve(profile.Provider, now,
+                    Math.Min(settings.MaxRequestsPerHour, SharedProviderQuota.MaxAttemptsPerProviderHour),
+                    out _))
+                {
+                    switched = true;
+                    continue;
+                }
+
                 try
                 {
                     var payload = new { model = profile.Model, messages,
@@ -207,7 +220,9 @@ public sealed class RemoteAiResponder : IDisposable
                         (int)response.StatusCode >= 500)
                     {
                         var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
-                        unavailableUntil[profile.Id] = now + (retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry);
+                        var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
+                        unavailableUntil[profile.Id] = now + boundedRetry;
+                        if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, boundedRetry);
                         switched = true;
                         continue;
                     }
@@ -215,6 +230,7 @@ public sealed class RemoteAiResponder : IDisposable
                     {
                         // 4xx is often an invalid key or model; do not retry automatically.
                         unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
+                        if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, TimeSpan.FromMinutes(15));
                         switched = true;
                         continue;
                     }
@@ -236,6 +252,7 @@ public sealed class RemoteAiResponder : IDisposable
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
                 {
                     unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
+                    if (Multi) sharedQuota.RecordCooldown(profile.Provider, now, TimeSpan.FromMinutes(3));
                     switched = true;
                 }
             }
