@@ -47,6 +47,33 @@ class MultiProviderConfigurationTests(unittest.TestCase):
         self.assertEqual(provider_profiles.provider_key_path("/tmp", "Gemini"),
                          Path("/tmp/ai-keys/gemini.txt"))
 
+    def test_several_models_of_one_provider_share_single_key(self):
+        c = self.settings()
+        for i, name in enumerate(("gemini-3-flash-preview", "gemini-3.5-flash-lite",
+                                  "gemini-3.1-flash-lite")):
+            c["profiles"].append({
+                "id": f"gemini-{i}", "provider": "Gemini", "model": name,
+                "enabled": True, "verified": True, "apiKey": ""
+            })
+        models = provider_profiles.normalize(c)["Profiles"]
+        self.assertEqual(len(models), 4)
+        self.assertEqual(len(set(m["ApiKeyEnv"] for m in models[1:])), 1)
+        self.assertEqual(models[1]["ApiKeyEnv"], "OSAI_GEMINI_API_KEY")
+
+    def test_sixteen_model_profiles_supported(self):
+        c = self.settings()
+        for i in range(15):
+            c["profiles"].append({
+                "id": f"groq-{i}", "provider": "Groq",
+                "model": "openai/gpt-oss-20b", "enabled": False,
+                "verified": False, "apiKey": ""
+            })
+        self.assertEqual(len(provider_profiles.normalize(c)["Profiles"]), 16)
+        c["profiles"].append(c["profiles"][-1].copy())
+        c["profiles"][-1]["id"] = "groq-overflow"
+        with self.assertRaises(provider_profiles.ProfileError):
+            provider_profiles.normalize(c)
+
     def test_gemini_non_free_models_rejected(self):
         c = self.settings()
         c["profiles"][0]["provider"] = "Gemini"
