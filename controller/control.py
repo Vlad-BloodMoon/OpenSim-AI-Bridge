@@ -242,7 +242,7 @@ def save_ai_settings(install, values):
     if not isinstance(model, str) or re.fullmatch(r"[a-zA-Z0-9._:/-]{1,100}", model) is None:
         raise ControlError("Invalid AI model identifier")
     prompt = values["systemPrompt"]
-    if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 600 or any(ord(c) < 32 and c not in "\\n\\t" for c in prompt):
+    if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 600 or any(ord(c) < 32 and c not in "\n\t" for c in prompt):
         raise ControlError("Invalid system prompt")
     uuids = values["authorizedUuids"]
     if not isinstance(uuids, list) or len(uuids) > 12 or any(not isinstance(u, str) or len(u) > 36 for u in uuids):
@@ -278,7 +278,7 @@ def save_ai_settings(install, values):
                 os.fchmod(fd, 0o600)
                 os.fchown(fd, meta.st_uid, meta.st_gid)
                 with os.fdopen(fd, "w", encoding="utf-8") as output:
-                    output.write(key + "\\n")
+                    output.write(key + "\n")
                     output.flush()
                     os.fsync(output.fileno())
                 os.replace(tmp, secret_path)
@@ -291,7 +291,7 @@ def save_ai_settings(install, values):
             os.fchown(fd, meta.st_uid, meta.st_gid)
             with os.fdopen(fd, "w", encoding="utf-8") as output:
                 json.dump(doc, output, indent=2, ensure_ascii=False)
-                output.write("\\n")
+                output.write("\n")
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(tmp, path)
