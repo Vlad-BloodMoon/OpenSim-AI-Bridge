@@ -1,0 +1,30 @@
+[Unit]
+Description=OpenSim AI Bridge - headless OpenSimulator avatar
+After=network-online.target
+Wants=network-online.target
+# This condition prevents any new bot connection while Firestorm mode is active.
+ConditionPathExists=!@INSTALL_DIR@/maintenance.lock
+
+[Service]
+Type=simple
+User=@BOT_USER@
+Group=@BOT_USER@
+WorkingDirectory=@INSTALL_DIR@
+Environment=OSAI_INSTALL_DIR=@INSTALL_DIR@
+ExecStart=/usr/bin/bash @INSTALL_DIR@/scripts/start-bot.sh
+# The .NET process handles SIGINT to perform a best-effort Logout.
+KillSignal=SIGINT
+TimeoutStopSec=25
+Restart=on-failure
+RestartSec=15
+StartLimitIntervalSec=120
+StartLimitBurst=4
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=false
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
