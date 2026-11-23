@@ -10,6 +10,8 @@ import os
 import stat
 from pathlib import Path
 import pwd
+import re
+import uuid
 import socket
 import struct
 import subprocess
@@ -19,7 +21,7 @@ import time
 import multi_bot
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume"))
 MAX_REQUEST = 4096
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -211,6 +213,96 @@ def save_settings(install, values):
     return {"saved": True, "restartRequired": True}
 
 
+def read_ai_settings(install):
+    try:
+        path, _ = config_file(install)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        ai = doc.get("Ai") or {}
+        key_file = install / "ai-api-key.txt"
+        return {
+            "enabled": ai.get("Enabled", False),
+            "provider": ai.get("Provider", "OpenAI"),
+            "model": ai.get("Model", "gpt-4.1-mini"),
+            "authorizedUuids": ai.get("AuthorizedUuidList", []),
+            "maxRequestsPerHour": ai.get("MaxRequestsPerHour", 30),
+            "minSecondsBetweenRequests": ai.get("MinSecondsBetweenRequests", 15),
+            "systemPrompt": ai.get("SystemPrompt", "Tu es un assistant BloodMoon. Réponds dans la langue de la personne, sans inventer."),
+            "hasKey": key_file.is_file() and key_file.stat().st_size > 0,
+        }
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ControlError("Could not read remote AI settings") from exc
+
+
+def save_ai_settings(install, values):
+    if not isinstance(values, dict) or set(values) != {"enabled", "provider", "model", "authorizedUuids", "maxRequestsPerHour", "minSecondsBetweenRequests", "systemPrompt", "apiKey"}:
+        raise ControlError("Invalid remote AI settings fields")
+    if type(values["enabled"]) is not bool or values["provider"] not in ("OpenAI", "Groq", "OpenRouter"):
+        raise ControlError("Unsupported AI provider or enabled flag")
+    model = values["model"]
+    if not isinstance(model, str) or re.fullmatch(r"[a-zA-Z0-9._:/-]{1,100}", model) is None:
+        raise ControlError("Invalid AI model identifier")
+    prompt = values["systemPrompt"]
+    if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 600 or any(ord(c) < 32 and c not in "\\n\\t" for c in prompt):
+        raise ControlError("Invalid system prompt")
+    uuids = values["authorizedUuids"]
+    if not isinstance(uuids, list) or len(uuids) > 12 or any(not isinstance(u, str) or len(u) > 36 for u in uuids):
+        raise ControlError("Invalid UUID allowlist")
+    try:
+        allowed = list(dict.fromkeys(str(uuid.UUID(u)) for u in uuids))
+    except (ValueError, AttributeError) as exc:
+        raise ControlError("One or more authorized UUIDs are invalid") from exc
+    hourly = values["maxRequestsPerHour"]
+    cooldown = values["minSecondsBetweenRequests"]
+    if type(hourly) is not int or not 1 <= hourly <= 120 or type(cooldown) is not int or not 5 <= cooldown <= 3600:
+        raise ControlError("Invalid AI request limits")
+    key = values["apiKey"]
+    if not isinstance(key, str) or len(key) > 256 or any(ord(c) < 33 or ord(c) > 126 for c in key):
+        raise ControlError("Invalid secret key")
+    secret_path = install / "ai-api-key.txt"
+    if secret_path.is_symlink():
+        raise ControlError("Unsafe AI secret path")
+    if values["enabled"] and (not allowed or (not key and not secret_path.is_file())):
+        raise ControlError("Enable AI only after adding an API key and at least one authorized UUID")
+    try:
+        path, meta = config_file(install)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        doc["Ai"] = {
+            "Enabled": values["enabled"], "Provider": values["provider"], "Model": model,
+            "ApiKeyEnv": "OSAI_AI_API_KEY",
+            "AuthorizedUuidList": allowed, "MaxRequestsPerHour": hourly,
+            "MinSecondsBetweenRequests": cooldown, "SystemPrompt": prompt.strip(),
+        }
+        if key:
+            fd, tmp = tempfile.mkstemp(prefix=".ai-key-", dir=str(install))
+            try:
+                os.fchmod(fd, 0o600)
+                os.fchown(fd, meta.st_uid, meta.st_gid)
+                with os.fdopen(fd, "w", encoding="utf-8") as output:
+                    output.write(key + "\\n")
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(tmp, secret_path)
+            finally:
+                if os.path.exists(tmp):
+                    os.unlink(tmp)
+        fd, tmp = tempfile.mkstemp(prefix=".ai-settings-", dir=str(install))
+        try:
+            os.fchmod(fd, stat.S_IMODE(meta.st_mode))
+            os.fchown(fd, meta.st_uid, meta.st_gid)
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                json.dump(doc, output, indent=2, ensure_ascii=False)
+                output.write("\\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(tmp, path)
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+    except (OSError, KeyError, ValueError, TypeError) as exc:
+        raise ControlError("Could not save remote AI settings") from exc
+    return {"saved": True, "restartRequired": True}
+
+
 def fleet_units():
     return [UNIT] + [multi_bot.bot_unit(bot_id) for bot_id in multi_bot.instances()]
 
@@ -332,6 +424,10 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
             raise ControlError(str(exc)) from exc
     else:
         unit = UNIT
+    if command == "get_ai_settings":
+        return read_ai_settings(install)
+    if command == "save_ai_settings":
+        return save_ai_settings(install, settings)
     if command == "get_settings":
         return read_settings(install)
     if command == "save_settings":
