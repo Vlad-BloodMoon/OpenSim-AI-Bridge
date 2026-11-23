@@ -57,7 +57,7 @@ function check_csrf(): bool {
     return isset($_POST['csrf']) && is_string($_POST['csrf'])
         && hash_equals(csrf_token(), $_POST['csrf']);
 }
-function request_control(string $action, bool $confirm = false, ?array $settings = null): array {
+function request_control(string $action, bool $confirm = false, ?array $settings = null, string $botId = 'main', ?array $credentials = null): array {
     $errno = 0;
     $errstr = '';
     $fp = @stream_socket_client('unix://' . CONTROL_SOCKET, $errno, $errstr, 2.0);
@@ -67,6 +67,8 @@ function request_control(string $action, bool $confirm = false, ?array $settings
     stream_set_timeout($fp, 35);
     $payload = ['action' => $action, 'confirm' => $confirm];
     if ($settings !== null) $payload['settings'] = $settings;
+    $payload['botId'] = $botId;
+    if ($credentials !== null) $payload['credentials'] = $credentials;
     $sent = fwrite($fp, json_encode($payload, JSON_THROW_ON_ERROR) . "\n");
     if ($sent === false) {
         fclose($fp);
@@ -81,6 +83,8 @@ function request_control(string $action, bool $confirm = false, ?array $settings
     return is_array($data) ? $data : ['ok' => false, 'error' => 'Réponse incorrecte'];
 }
 
+$requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
+$selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -130,7 +134,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'save_settings') {
+        if ($action === 'create_bot') {
+            $coords = [];
+            foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
+                $n = filter_var($_POST[$axis] ?? null, FILTER_VALIDATE_INT,
+                    ['options' => ['min_range' => 0, 'max_range' => $limit]]);
+                if ($n === false) { $error = 'Coordonnées invalides.'; break; }
+                $coords[$axis] = $n;
+            }
+            if ($error === '') {
+                $credentials = [
+                    'firstName' => is_string($_POST['firstName'] ?? null) ? trim($_POST['firstName']) : '',
+                    'lastName' => is_string($_POST['lastName'] ?? null) ? trim($_POST['lastName']) : '',
+                    'password' => is_string($_POST['avatarPassword'] ?? null) ? $_POST['avatarPassword'] : '',
+                    'region' => is_string($_POST['newRegion'] ?? null) ? trim($_POST['newRegion']) : '',
+                    'x' => $coords['x'], 'y' => $coords['y'], 'z' => $coords['z'],
+                ];
+                $response = request_control('create_bot', false, null, 'main', $credentials);
+                unset($credentials);
+                if ($response['ok'] ?? false) {
+                    $newId = (string) ($response['result']['botId'] ?? '');
+                    if (preg_match('/^[0-9a-f]{16}$/D', $newId)) $selectedBot = $newId;
+                    $message = !empty($response['result']['started'])
+                        ? 'Avatar enregistré : connexion en cours.'
+                        : 'Avatar enregistré, mais le démarrage du service a échoué.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Création impossible.');
+                }
+            }
+        } elseif ($action === 'save_settings') {
             $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
             $coords = [];
             foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
@@ -155,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'enableLocalChat' => ($_POST['enableLocalChat'] ?? '') === '1',
                     'reconnectEnabled' => ($_POST['reconnectEnabled'] ?? '') === '1',
                 ];
-                $response = request_control('save_settings', false, $settings);
+                $response = request_control('save_settings', false, $settings, $selectedBot);
                 if ($response['ok'] ?? false) {
                     $message = 'Configuration sauvegardée. Redémarre le bot depuis cette page pour appliquer les changements.';
                 } else {
@@ -166,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($action === 'resume' && ($_POST['viewer_closed'] ?? '') !== 'yes') {
                 $error = 'Confirme d’abord la fermeture de Firestorm.';
             } else {
-                $response = request_control($action, $action === 'resume');
+                $response = request_control($action, $action === 'resume', null, $selectedBot);
                 if ($response['ok'] ?? false) {
                     $message = 'Commande exécutée : ' . $action;
                 } else {
@@ -181,9 +213,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if ($authenticated) {
     $_SESSION['last_activity'] = $now;
 }
-$status = $authenticated ? request_control('status') : null;
+$listResponse = $authenticated ? request_control('list_bots') : null;
+$bots = is_array($listResponse['result']['bots'] ?? null) ? $listResponse['result']['bots'] : [];
+$knownBots = array_column($bots, 'id');
+if (!in_array($selectedBot, $knownBots, true)) $selectedBot = 'main';
+$status = $authenticated ? request_control('status', false, null, $selectedBot) : null;
 $state = is_array($status['result'] ?? null) ? $status['result'] : null;
-$settingsResult = $authenticated ? request_control('get_settings') : null;
+$settingsResult = $authenticated ? request_control('get_settings', false, null, $selectedBot) : null;
 $botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
 ?>
 <!doctype html>
@@ -214,7 +250,7 @@ button.warning{background:#af6421}
 button.danger{background:#a73548}
 button.secondary{background:#34415d}
 button:focus-visible,input:focus-visible{outline:3px solid #91baff;outline-offset:2px}
-input[type=text],input[type=number]{width:100%;padding:.75rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.4rem 0}input[type=password]{width:100%;padding:.85rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.5rem 0 1.2rem}
+a.bot-link{color:#dbe7ff;text-decoration:none;background:#273a62;border:1px solid #3a4f7c;border-radius:10px;padding:.6rem .9rem}a.bot-link.selected{background:#426ce0;color:#fff}input[type=text],input[type=number]{width:100%;padding:.75rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.4rem 0}input[type=password]{width:100%;padding:.85rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.5rem 0 1.2rem}
 label{display:block}
 .notice{padding:.9rem 1rem;border-radius:11px;margin:1rem 0;background:#1b3a37}
 .error{background:#512633}
@@ -231,6 +267,7 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <?php if ($authenticated): ?>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <button class="secondary" name="action" value="logout">Déconnexion</button>
 </form>
 <?php endif ?>
@@ -249,6 +286,41 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 </form>
 </section>
 <?php else: ?>
+<section class="panel">
+<h2>Mes avatars</h2>
+<?php if ($bots): ?>
+<div class="actions">
+<?php foreach ($bots as $bot): ?>
+<a class="bot-link <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>"
+ href="?bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>"><?= esc(trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''))) ?></a>
+<?php endforeach ?>
+</div>
+<?php else: ?>
+<p class="muted">Liste des avatars indisponible : contrôleur multi-avatars à mettre à jour.</p>
+<?php endif ?>
+</section>
+<section class="panel">
+<h2>Ajouter et connecter un avatar</h2>
+<p class="muted">Le nouvel avatar doit déjà posséder un compte sur la grille. Il utilisera le même serveur de connexion que BloodMoon AI, mais avec son propre mot de passe, sa région, ses coordonnées et son service.</p>
+<form method="post" autocomplete="off">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<div class="grid">
+<div><label for="new-first">Prénom</label><input type="text" id="new-first" name="firstName" maxlength="32" required></div>
+<div><label for="new-last">Nom</label><input type="text" id="new-last" name="lastName" maxlength="32" required></div>
+</div>
+<label for="new-password">Mot de passe du compte avatar</label>
+<input type="password" id="new-password" name="avatarPassword" autocomplete="new-password" required>
+<label for="new-region">Région de départ</label>
+<input type="text" id="new-region" name="newRegion" maxlength="80" value="BloodMoon_TEST" required>
+<div class="grid" style="margin:1rem 0">
+<div><label for="new-x">X</label><input type="number" id="new-x" name="x" min="0" max="256" value="128" required></div>
+<div><label for="new-y">Y</label><input type="number" id="new-y" name="y" min="0" max="256" value="128" required></div>
+<div><label for="new-z">Z</label><input type="number" id="new-z" name="z" min="0" max="4096" value="25" required></div>
+</div>
+<button name="action" value="create_bot" <?= !$bots ? 'disabled' : '' ?>>Ajouter et connecter</button>
+</form>
+</section>
 <section class="panel">
 <h2>État du service</h2>
 <?php if ($state === null): ?>
