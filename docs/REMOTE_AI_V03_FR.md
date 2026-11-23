@@ -47,3 +47,7 @@ La clé API n'est jamais renvoyée vers le navigateur. Elle se trouve dans un fi
 6. Tester l'arrêt/reprise par bot et le passage Firestorm, puis relever RAM, CPU et logs.
 
 **Statut** : code expérimental, pas encore validé avec une vraie clé/fournisseur sur BloodMoon. Ne pas annoncer l'IA en production avant ce test. Les fonctionnalités futures comprennent fournisseur gratuit pour le public, facturation et quotas persistants, modération, RAG/base de connaissances et traduction.
+
+## Sélecteur de modèles dans Modules IA (23 novembre 2026)
+
+Le formulaire Web propose désormais une liste déroulante dépendant du fournisseur (Groq, OpenAI, OpenRouter). Choisir un modèle renseigne le champ `Identifiant du modèle`, conservé comme saisie modifiable pour les modèles non listés ou récemment publiés. Changer de fournisseur propose son premier modèle ; ouvrir la page conserve un identifiant déjà enregistré même s'il n'est pas dans les suggestions. Aucun appel API n'est effectué pour remplir cette liste ; les droits d'accès et les catalogues restent ceux du fournisseur et de son compte. La modification ne touche ni au contrôleur ni à la DLL et s'installe en remplaçant uniquement `web/OpenSim_AI/index.php`.
