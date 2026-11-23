@@ -16,9 +16,10 @@ import subprocess
 import sys
 import tempfile
 import time
+import multi_bot
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "list_bots", "create_bot"))
 MAX_REQUEST = 4096
 
 
@@ -26,10 +27,10 @@ class ControlError(Exception):
     pass
 
 
-def systemctl(*arguments):
+def systemctl(*arguments, unit=UNIT):
     try:
         result = subprocess.run(
-            ("/usr/bin/systemctl", *arguments, UNIT),
+            ("/usr/bin/systemctl", *arguments, unit),
             text=True, capture_output=True, timeout=30, check=False,
             env={"PATH": "/usr/bin:/bin", "LANG": "C"},
         )
@@ -41,9 +42,9 @@ def systemctl(*arguments):
     return result.stdout
 
 
-def service_state():
+def service_state(unit=UNIT):
     values = {}
-    output = systemctl("show", "--property=ActiveState,SubState,UnitFileState")
+    output = systemctl("show", "--property=ActiveState,SubState,UnitFileState", unit=unit)
     for line in output.splitlines():
         if "=" in line:
             key, value = line.split("=", 1)
@@ -166,16 +167,43 @@ def save_settings(install, values):
     return {"saved": True, "restartRequired": True}
 
 
-def execute(command, lock, confirm, install, settings=None):
+def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "create_bot":
+        try:
+            return multi_bot.create_bot(credentials, install)
+        except multi_bot.BotRegistryError as exc:
+            raise ControlError(str(exc)) from exc
+    if command == "list_bots":
+        bots = [{"id": "main", "firstName": "", "lastName": "", "region": ""}]
+        try:
+            legacy = json.loads((install / "appsettings.json").read_text(encoding="utf-8"))["Grid"]
+            bots[0].update(firstName=legacy.get("AvatarFirstName", ""), lastName=legacy.get("AvatarLastName", ""),
+                           region=legacy.get("StartLocation", {}).get("RegionName", ""))
+            for instance_id in multi_bot.instances():
+                bots.append(multi_bot.get_metadata(instance_id))
+        except (OSError, KeyError, ValueError, TypeError, multi_bot.BotRegistryError) as exc:
+            raise ControlError("Unable to list bots") from exc
+        return {"bots": bots}
+    if bot_id != "main":
+        try:
+            install = multi_bot.bot_path(bot_id)
+            if not (install / "appsettings.json").is_file():
+                raise ControlError("Unknown bot")
+            lock = install / "maintenance.lock"
+            unit = multi_bot.bot_unit(bot_id)
+        except multi_bot.BotRegistryError as exc:
+            raise ControlError(str(exc)) from exc
+    else:
+        unit = UNIT
     if command == "get_settings":
         return read_settings(install)
     if command == "save_settings":
         return save_settings(install, settings)
     if command == "status":
-        return {**service_state(), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
+        return {**service_state(unit), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
 
     if command in ("start", "restart") and lock.exists():
         raise ControlError("Firestorm maintenance is enabled; resume first")
@@ -183,20 +211,20 @@ def execute(command, lock, confirm, install, settings=None):
     if command == "firestorm":
         # Persist the lock BEFORE stopping so a simultaneous restart cannot log in.
         create_lock(lock)
-        systemctl("stop")
+        systemctl("stop", unit=unit)
     elif command == "resume":
         if confirm is not True:
             raise ControlError("Firestorm disconnection confirmation required")
         # Only remove the lock after confirmation.
         lock.unlink(missing_ok=True)
-        systemctl("start")
+        systemctl("start", unit=unit)
     elif command == "start":
         systemctl("start")
     elif command == "stop":
         systemctl("stop")
     elif command == "restart":
-        systemctl("restart")
-    return {**service_state(), "maintenance": lock.exists()}
+        systemctl("restart", unit=unit)
+    return {**service_state(unit), "maintenance": lock.exists()}
 
 
 def handle(client, allowed_uid, lock, install):
@@ -216,11 +244,11 @@ def handle(client, allowed_uid, lock, install):
         return {"ok": False, "error": "Malformed request"}
     try:
         msg = json.loads(buf.split(b"\n", 1)[0])
-        if not isinstance(msg, dict) or set(msg) - {"action", "confirm", "settings"}:
+        if not isinstance(msg, dict) or set(msg) - {"action", "confirm", "settings", "botId", "credentials"}:
             raise ControlError("Invalid request")
-        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install, msg.get("settings"))
+        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install, msg.get("settings"), msg.get("botId", "main"), msg.get("credentials"))
         return {"ok": True, "result": result}
-    except (ValueError, TypeError, ControlError) as exc:
+    except (ValueError, TypeError, ControlError, multi_bot.BotRegistryError) as exc:
         return {"ok": False, "error": str(exc)}
 
 
