@@ -49,6 +49,7 @@ public static class ImReplyFormatter
             if (Encoding.UTF8.GetByteCount(text) <= limit)
             {
                 parts.Add(text.Trim());
+                text = "";
                 break;
             }
 
