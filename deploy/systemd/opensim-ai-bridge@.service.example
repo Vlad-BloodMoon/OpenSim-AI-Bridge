@@ -3,6 +3,7 @@ Description=OpenSim AI Bridge avatar instance %i
 After=network-online.target
 Wants=network-online.target
 ConditionPathExists=!/var/lib/opensim-ai-bridge/bots/%i/maintenance.lock
+ConditionPathExists=!/var/lib/opensim-ai-bridge/global-maintenance.lock
 StartLimitIntervalSec=120
 StartLimitBurst=4
 
