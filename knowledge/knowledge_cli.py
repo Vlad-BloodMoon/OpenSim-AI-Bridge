@@ -13,6 +13,9 @@ from html.parser import HTMLParser
 import json
 import re
 import sqlite3
+import subprocess
+import tempfile
+import os
 import sys
 import time
 from pathlib import Path
@@ -37,6 +40,10 @@ PRIVATE_PARTS = (
 )
 IGNORE_EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".css", ".js", ".json", ".xml", ".zip", ".oar", ".iar", ".pdf", ".mp4", ".woff", ".ttf")
 MAX_RESPONSE_BYTES = 1_500_000
+MAX_PDF_BYTES = 12_000_000
+MAX_PDF_PAGES = 60
+MAX_SITE_PAGES = 2500
+MAX_PDF_DOCUMENTS = 300
 MAX_TEXT_CHARS = 180_000
 MAX_CHUNK_CHARS = 1300
 DEFAULT_DB = Path("/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.db")
@@ -130,8 +137,11 @@ def approved(source, url):
     if not value or source not in SOURCES:
         return None
     path = urlsplit(value).path
-    if path.lower().endswith(IGNORE_EXT):
+    is_guide_pdf = (source == "roleplay" and path.startswith("/Download/GUIDE/") and path.lower().endswith(".pdf"))
+    if path.lower().endswith(IGNORE_EXT) and not is_guide_pdf:
         return None
+    if is_guide_pdf:
+        return value if not urlsplit(value).query else None
     pieces = [p.lower().replace("_", "-") for p in path.strip("/").split("/") if p]
     if any(any(p == x or p.startswith(x + "-") or p.startswith(x + ".") for x in PRIVATE_PARTS) for p in pieces):
         return None
@@ -225,6 +235,42 @@ def download(source, url):
         return raw.decode(charset, errors="replace")
 
 
+def download_pdf(source, url):
+    if approved(source, url) != url or not urlsplit(url).path.startswith("/Download/GUIDE/"):
+        raise ValueError("PDF outside approved Roleplay guide")
+    request = Request(url, headers={"User-Agent": "BloodMoonKnowledgeIndexer/0.3 (admin-managed)",
+                                   "Accept": "application/pdf"})
+    with build_opener(NoRedirect()).open(request, timeout=25) as response:
+        if response.geturl() != url or response.headers.get_content_type() != "application/pdf":
+            raise ValueError("Unexpected PDF response type or URL")
+        raw = response.read(MAX_PDF_BYTES + 1)
+        if len(raw) > MAX_PDF_BYTES or not raw.startswith(b"%PDF-"):
+            raise ValueError("PDF too large or malformed")
+        return raw
+
+
+def extract_pdf(pdf_bytes):
+    """pdftotext / pdfinfo from poppler-utils; never invoke shells or OCR."""
+    with tempfile.TemporaryDirectory(prefix="bm-guide-") as folder:
+        path = Path(folder) / "guide.pdf"
+        path.write_bytes(pdf_bytes)
+        info = subprocess.run(["/usr/bin/pdfinfo", str(path)], capture_output=True,
+                              text=True, timeout=15, check=False)
+        if info.returncode:
+            raise ValueError("Cannot inspect guide PDF")
+        pages = re.search(r"^Pages:\\s*(\\d+)", info.stdout, re.MULTILINE)
+        if not pages or int(pages.group(1)) > MAX_PDF_PAGES:
+            raise ValueError("Guide PDF exceeds page limit")
+        result = subprocess.run(["/usr/bin/pdftotext", "-layout", "-enc", "UTF-8",
+                                 str(path), "-"], capture_output=True, text=True,
+                                timeout=30, check=False)
+        if result.returncode:
+            raise ValueError("Could not extract guide PDF text")
+        # No OCR; scanned/image-only documents need manual review.
+        text = re.sub(r"[ \\t]+", " ", result.stdout).replace("\\f", "\\n")
+        return text[:MAX_TEXT_CHARS]
+
+
 def parse_page(markup):
     parser = PageText()
     parser.feed(markup)
@@ -232,10 +278,12 @@ def parse_page(markup):
     return title, text, parser.links
 
 
-def crawl(conn, source, max_pages=80, delay=.15):
+def crawl(conn, source, max_pages=600, delay=.15):
     pending = deque([SOURCES[source]])
     visited = set()
-    counts = {"indexed": 0, "unchanged": 0, "errors": 0, "pages": 0, "passages": 0}
+    pdf_pending = deque()
+    pdf_visited = set()
+    counts = {"indexed": 0, "unchanged": 0, "errors": 0, "pages": 0, "pdfs": 0, "passages": 0}
     while pending and len(visited) < max_pages:
         url = pending.popleft()
         if url in visited or approved(source, url) != url:
@@ -247,16 +295,38 @@ def crawl(conn, source, max_pages=80, delay=.15):
             counts[state] += 1
             counts["passages"] += n
             print(f"  {state}: {url} [{len(text)} chars]", flush=True)
-            # Link discovery only from already-approved public HTML pages.
             for href in links:
                 target = approved(source, canonical(urljoin(url, href)) or "")
-                if target and target not in visited and target not in pending:
+                if not target:
+                    continue
+                if target.lower().split("?")[0].endswith(".pdf"):
+                    # PDF links from approved Roleplay guide page only.
+                    if source == "roleplay" and urlsplit(url).path == "/roleplay/pages/guide.php" and target not in pdf_visited and target not in pdf_pending:
+                        pdf_pending.append(target)
+                elif target not in visited and target not in pending:
                     pending.append(target)
         except (HTTPError, URLError, OSError, ValueError, UnicodeError) as exc:
             counts["errors"] += 1
             print(f"  ERROR {url}: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
         counts["pages"] += 1
         if pending and delay:
+            time.sleep(delay)
+    for url in list(pdf_pending)[:MAX_PDF_DOCUMENTS]:
+        if url in pdf_visited:
+            continue
+        pdf_visited.add(url)
+        try:
+            pdf_text = extract_pdf(download_pdf(source, url))
+            title = Path(urlsplit(url).path).stem.replace("_", " ")
+            state, n = store(conn, source, url, title, pdf_text)
+            counts[state] += 1
+            counts["passages"] += n
+            print(f"  {state} PDF: {url} [{len(pdf_text)} chars]", flush=True)
+        except (HTTPError, URLError, OSError, ValueError, UnicodeError, subprocess.TimeoutExpired) as exc:
+            counts["errors"] += 1
+            print(f"  PDF ERROR {url}: {type(exc).__name__}: {exc}", file=sys.stderr, flush=True)
+        counts["pdfs"] += 1
+        if delay:
             time.sleep(delay)
     return counts
 
@@ -280,7 +350,7 @@ def main():
     sub = parser.add_subparsers(dest="action", required=True)
     grab = sub.add_parser("import", help="Crawl approved public HTML links")
     grab.add_argument("--source", choices=[*SOURCES, "all"], default="all")
-    grab.add_argument("--max-pages", type=int, default=80, help="Maximum HTML pages per source, 1 to 120")
+    grab.add_argument("--max-pages", type=int, default=600, help="Maximum HTML pages per source, 1 to 2500")
     fixture = sub.add_parser("import-html", help="Offline local HTML fixture")
     fixture.add_argument("--source", required=True, choices=list(SOURCES))
     fixture.add_argument("--file", type=Path, required=True)
@@ -292,8 +362,8 @@ def main():
     conn = connect(args.db)
     try:
         if args.action == "import":
-            if not 1 <= args.max_pages <= 120:
-                parser.error("--max-pages must be between 1 and 120")
+            if not 1 <= args.max_pages <= MAX_SITE_PAGES:
+                parser.error("--max-pages must be between 1 and 2500")
             failures = 0
             for source in SOURCES if args.source == "all" else [args.source]:
                 print(f"Indexing {source}:", flush=True)
