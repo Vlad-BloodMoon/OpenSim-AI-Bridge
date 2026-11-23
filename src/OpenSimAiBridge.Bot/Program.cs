@@ -129,6 +129,31 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
     }
 }
 
+// Offline regression test: no truncation across long multilingual Firestorm IMs.
+if (args.Length == 1 && args[0] == "--verify-im-chunks")
+{
+    var original = "La malédiction retire quatre unités de liquide vital chaque nuit. " +
+        string.Concat(Enumerable.Repeat("Les vampires et les lycans doivent se protéger. ", 50)) +
+        "🌙 La réponse se termine ici.";
+    var chunks = ImReplyFormatter.Split(original);
+    if (chunks.Count <= 1 || chunks.Any(c => System.Text.Encoding.UTF8.GetByteCount(c) > 600)
+        || !chunks[^1].EndsWith("La réponse se termine ici.", StringComparison.Ordinal)
+        || chunks.Any(c => c.Contains("trop longue", StringComparison.OrdinalIgnoreCase)))
+    {
+        Console.Error.WriteLine("IM answer should be sent completely in safe-sized chunks.");
+        return 1;
+    }
+    var table = "| Étape | Détails |\\n|---|---|\\n| Nuit | -4 vital |";
+    var plain = ImReplyFormatter.PlainText(table);
+    if (plain.Contains("|---|", StringComparison.Ordinal) || !plain.Contains("Nuit — -4 vital", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("Markdown tables must be readable in IM.");
+        return 1;
+    }
+    Console.WriteLine("Full-length UTF-8-safe Firestorm IM delivery checks passed.");
+    return 0;
+}
+
 // Static free IM commands remain available even when remote AI is off.
 // Never place avatar passwords in configuration files or source code.
 var configPath = args.Length > 0 ? args[0] : "appsettings.json";
