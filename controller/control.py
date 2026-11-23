@@ -224,6 +224,7 @@ def read_ai_settings(install):
             "provider": ai.get("Provider", "OpenAI"),
             "model": ai.get("Model", "gpt-4.1-mini"),
             "authorizedUuids": ai.get("AuthorizedUuidList", []),
+            "publicAccess": ai.get("PublicAccess", False),
             "maxRequestsPerHour": ai.get("MaxRequestsPerHour", 30),
             "minSecondsBetweenRequests": ai.get("MinSecondsBetweenRequests", 15),
             "systemPrompt": ai.get("SystemPrompt", "Tu es un assistant BloodMoon. Réponds dans la langue de la personne, sans inventer."),
@@ -234,10 +235,12 @@ def read_ai_settings(install):
 
 
 def save_ai_settings(install, values):
-    if not isinstance(values, dict) or set(values) != {"enabled", "provider", "model", "authorizedUuids", "maxRequestsPerHour", "minSecondsBetweenRequests", "systemPrompt", "apiKey"}:
+    if not isinstance(values, dict) or set(values) != {"enabled", "provider", "model", "authorizedUuids", "publicAccess", "maxRequestsPerHour", "minSecondsBetweenRequests", "systemPrompt", "apiKey"}:
         raise ControlError("Invalid remote AI settings fields")
     if type(values["enabled"]) is not bool or values["provider"] not in ("OpenAI", "Groq", "OpenRouter"):
         raise ControlError("Unsupported AI provider or enabled flag")
+    if type(values["publicAccess"]) is not bool or (values["publicAccess"] and values["provider"] != "Groq"):
+        raise ControlError("Public AI access is supported only with Groq")
     model = values["model"]
     if not isinstance(model, str) or re.fullmatch(r"[a-zA-Z0-9._:/-]{1,100}", model) is None:
         raise ControlError("Invalid AI model identifier")
@@ -261,7 +264,7 @@ def save_ai_settings(install, values):
     secret_path = install / "ai-api-key.txt"
     if secret_path.is_symlink():
         raise ControlError("Unsafe AI secret path")
-    if values["enabled"] and (not allowed or (not key and not secret_path.is_file())):
+    if values["enabled"] and ((not allowed and not values["publicAccess"]) or (not key and not secret_path.is_file())):
         raise ControlError("Enable AI only after adding an API key and at least one authorized UUID")
     try:
         path, meta = config_file(install)
@@ -269,7 +272,7 @@ def save_ai_settings(install, values):
         doc["Ai"] = {
             "Enabled": values["enabled"], "Provider": values["provider"], "Model": model,
             "ApiKeyEnv": "OSAI_AI_API_KEY",
-            "AuthorizedUuidList": allowed, "MaxRequestsPerHour": hourly,
+            "AuthorizedUuidList": allowed, "PublicAccess": values["publicAccess"], "MaxRequestsPerHour": hourly,
             "MinSecondsBetweenRequests": cooldown, "SystemPrompt": prompt.strip(),
         }
         if key:
