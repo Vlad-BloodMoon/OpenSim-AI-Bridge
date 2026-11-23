@@ -32,6 +32,28 @@ class MultiProviderConfigurationTests(unittest.TestCase):
         )
         self.assertEqual(len(provider_profiles.normalize(c)["Profiles"]), 2)
 
+    def test_auto_three_independent_free_providers(self):
+        c = self.settings()
+        c["profiles"] += [
+            {"id": "router", "provider": "OpenRouter", "model": "openrouter/free",
+             "enabled": True, "verified": True, "apiKey": ""},
+            {"id": "gemini", "provider": "Gemini", "model": "gemini-2.5-flash-lite",
+             "enabled": True, "verified": True, "apiKey": ""},
+        ]
+        profiles = provider_profiles.normalize(c)["Profiles"]
+        self.assertEqual([p["Provider"] for p in profiles],
+                         ["Groq", "OpenRouter", "Gemini"])
+        self.assertEqual(profiles[2]["ApiKeyEnv"], "OSAI_GEMINI_API_KEY")
+        self.assertEqual(provider_profiles.provider_key_path("/tmp", "Gemini"),
+                         Path("/tmp/ai-keys/gemini.txt"))
+
+    def test_gemini_non_free_models_rejected(self):
+        c = self.settings()
+        c["profiles"][0]["provider"] = "Gemini"
+        c["profiles"][0]["model"] = "gemini-2.5-pro"
+        with self.assertRaises(provider_profiles.ProfileError):
+            provider_profiles.normalize(c)
+
     def test_reject_paid_public_provider(self):
         for name, model in (("OpenAI", "gpt-4.1-mini"),
                             ("OpenRouter", "openai/gpt-4o-mini")):
