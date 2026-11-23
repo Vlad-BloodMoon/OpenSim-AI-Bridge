@@ -75,3 +75,15 @@ L'interface peut être ouverte au départ avec un filtrage IP Apache en plus du 
 ## Correction sécurité du 23 novembre 2026
 
 L'unité de contrôle exécute désormais le code Python depuis `/usr/local/libexec/opensim-ai-bridge/control.py`, sous propriété `root:root` et répertoire parent non modifiable par les utilisateurs ordinaires. Une unité privilégiée ne doit **jamais** charger son code Python depuis le répertoire de travail `louna49400` susceptible d'être modifié via SFTP.
+
+## Mise à jour : configuration du bot depuis le Web (23 novembre 2026)
+
+Nouvelle rubrique **Configuration de l'avatar** : région de démarrage, position X/Y/Z, activation IM, observation du chat local, reconnexion automatique après perte de connexion. Le contrôleur n'expose **que ces sept champs** via `get_settings` et `save_settings`; les mots de passe, les identifiants de connexion, les API IA et les autres données privées ne sont jamais retournés par cette API.
+
+- La sauvegarde modifie le `appsettings.json` privé en préservant les autres clés JSON, l'utilisateur/groupe et les permissions ; elle n'interrompt **pas** la session en cours.
+- Les modifications seront appliquées au **prochain redémarrage du bot** via le bouton Redémarrer, après vérification que Firestorm est fermé.
+- Les coordonnées de démarrage sont des entiers, avec X/Y entre 0 et 256 et Z entre 0 et 4096. Cette V0.2 ne téléporte pas l'avatar déjà connecté ; ce sera une fonctionnalité distincte.
+- Pour bénéficier de cette rubrique, déployer la nouvelle version de `index.php` et du contrôleur **root-owned** puis redémarrer `opensim-ai-bridge-control.service`.
+- La présence en direct demande également le nouveau binaire .NET (fichier d'état privé sous `data/avatar-status.json`). `active` indique un processus Linux ; présence réelle signifie heartbeat récent, région et coordonnées confirmées.
+- Le service bot est désormais configuré pour démarrer automatiquement sur `robust-vm` selon le retour de l'administrateur ; `maintenance.lock` empêche toujours son démarrage en mode Firestorm.
+- **État de validation :** code GitHub publié, fonctionnalités de configuration et heartbeat non encore déployées/testées sur `robust-vm`.
