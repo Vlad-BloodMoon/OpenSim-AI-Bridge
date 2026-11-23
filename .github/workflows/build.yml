@@ -64,6 +64,9 @@ jobs:
       - name: Verify shared quotas across simulated avatars
         run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-shared-quota
 
+      - name: Verify untruncated, sequential Firestorm IM responses
+        run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-im-chunks
+
       - name: Publish for Linux x64 (framework-dependent)
         run: |
           dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
