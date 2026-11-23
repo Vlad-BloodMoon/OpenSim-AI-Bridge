@@ -42,6 +42,34 @@ if (string.IsNullOrWhiteSpace(password))
     return 2;
 }
 
+// Write the heartbeat outside the public Web root. Missing/old data is never treated as online.
+var heartbeatFile = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(configPath))!, "data", "avatar-status.json");
+Directory.CreateDirectory(Path.GetDirectoryName(heartbeatFile)!);
+void PublishHeartbeat(GridClient? client, string state)
+{
+    try
+    {
+        var connected = client?.Network.Connected == true && state == "online";
+        var pos = connected ? client!.Self.SimPosition : default;
+        var payload = JsonSerializer.Serialize(new
+        {
+            state,
+            connected,
+            region = connected ? client!.Network.CurrentSim?.Name : null,
+            x = connected ? (double?)pos.X : null,
+            y = connected ? (double?)pos.Y : null,
+            z = connected ? (double?)pos.Z : null,
+            updatedUtc = DateTimeOffset.UtcNow.ToUnixTimeSeconds()
+        });
+        var tmp = heartbeatFile + "." + Environment.ProcessId + ".tmp";
+        File.WriteAllText(tmp, payload);
+        File.Move(tmp, heartbeatFile, true);
+    }
+    catch (IOException e) { Console.Error.WriteLine($"Heartbeat write failed: {e.GetType().Name}"); }
+    catch (UnauthorizedAccessException) { Console.Error.WriteLine("Heartbeat write denied"); }
+}
+PublishHeartbeat(null, "starting");
+
 using var stop = new CancellationTokenSource();
 Console.CancelKeyPress += (_, e) =>
 {
@@ -57,10 +85,12 @@ Console.WriteLine("Ctrl+C to stop; IM 'ping', 'help' or 'where' to test.");
 do
 {
     var client = new GridClient();
+    PublishHeartbeat(null, "connecting");
     var disconnected = false;
     client.Network.Disconnected += (_, e) =>
     {
         disconnected = true;
+        PublishHeartbeat(null, "disconnected");
         Console.WriteLine($"Connection lost: {e.Reason}");
     };
 
@@ -134,17 +164,22 @@ do
         if (!ok)
         {
             Console.Error.WriteLine($"Login failed: {client.Network.LoginMessage}");
+            PublishHeartbeat(null, "login_failed");
         }
         else
         {
             Console.WriteLine($"Connected in {client.Network.CurrentSim?.Name} at {client.Self.SimPosition}");
+            PublishHeartbeat(client, "online");
             if (!string.IsNullOrWhiteSpace(location.RegionName) &&
                 !string.Equals(client.Network.CurrentSim?.Name, location.RegionName, StringComparison.OrdinalIgnoreCase))
             {
                 Console.Error.WriteLine("Warning: login succeeded in a different region than requested.");
             }
             while (!stop.IsCancellationRequested && client.Network.Connected && !disconnected)
+            {
+                PublishHeartbeat(client, "online");
                 await Task.Delay(TimeSpan.FromSeconds(2), stop.Token);
+            }
         }
     }
     catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
@@ -158,6 +193,7 @@ do
     }
     finally
     {
+        PublishHeartbeat(null, "offline");
         if (client.Network.Connected)
         {
             try { await client.Network.LogoutAsync(); }
@@ -171,6 +207,7 @@ do
     catch (OperationCanceledException) { break; }
 } while (true);
 
+PublishHeartbeat(null, "stopped");
 // Avoid keeping credentials accessible longer than the process lifetime.
 return 0;
 
