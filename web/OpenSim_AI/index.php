@@ -86,7 +86,7 @@ function request_control(string $action, bool $confirm = false, ?array $settings
 $requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
 $selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
 $pageRaw = $_POST['page'] ?? $_GET['page'] ?? 'dashboard';
-$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'modules'], true) ? $pageRaw : 'dashboard';
+$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules'], true) ? $pageRaw : 'dashboard';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -142,7 +142,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'create_bot') {
+        if ($action === 'fleet_stop' || $action === 'fleet_resume') {
+            $page = 'maintenance';
+            if (($_POST['fleet_confirm'] ?? '') !== 'yes') {
+                $error = 'Confirme cette opération globale.';
+            } else {
+                $response = request_control($action, true);
+                if ($response['ok'] ?? false) {
+                    $message = $action === 'fleet_stop' ? 'Maintenance générale activée.' : 'Maintenance générale terminée.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Erreur de maintenance générale.');
+                }
+            }
+        } elseif ($action === 'create_bot') {
             $page = 'avatars';
             $coords = [];
             foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
@@ -238,6 +250,8 @@ $listResponse = $authenticated ? request_control('list_bots') : null;
 $bots = is_array($listResponse['result']['bots'] ?? null) ? $listResponse['result']['bots'] : [];
 $knownBots = array_column($bots, 'id');
 if (!in_array($selectedBot, $knownBots, true)) $selectedBot = 'main';
+$fleetResult = $authenticated ? request_control('fleet_status') : null;
+$fleet = is_array($fleetResult['result'] ?? null) ? $fleetResult['result'] : null;
 $status = $authenticated ? request_control('status', false, null, $selectedBot) : null;
 $state = is_array($status['result'] ?? null) ? $status['result'] : null;
 $settingsResult = $authenticated ? request_control('get_settings', false, null, $selectedBot) : null;
@@ -339,6 +353,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </form>
 <?php endif ?>
 </header>
+<?php if ($authenticated && !empty($fleet['maintenance'])): ?><div class="notice error">Maintenance générale active. <a href="?page=maintenance">Gérer les services</a></div><?php endif ?>
 <?php if ($message !== ''): ?><div class="notice" role="status"><?= esc($message) ?></div><?php endif ?>
 <?php if ($error !== ''): ?><div class="notice error" role="alert"><?= esc($error) ?></div><?php endif ?>
 <?php if (!$authenticated): ?>
@@ -354,7 +369,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </section>
 <?php else: ?>
 <nav class="admin-menu" aria-label="Menu principal">
-<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','modules'=>'Modules IA'] as $p => $label): ?>
+<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA'] as $p => $label): ?>
 <a href="?page=<?= esc($p) ?>&amp;bot=<?= esc($selectedBot) ?>" <?= $page === $p ? 'aria-current="page"' : '' ?>><?= esc($label) ?></a>
 <?php endforeach ?>
 </nav>
@@ -437,7 +452,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 <?php endif ?>
 </section>
 <section class="panel">
-<h2>Contrôle de l'avatar</h2>
+<h2>Service de <?= esc($selectedName) ?></h2><p class="muted">Ces commandes agissent uniquement sur cet avatar. <a href="?page=maintenance&amp;bot=<?= esc($selectedBot) ?>">Arrêter tous les services AI</a></p>
 <div class="actions">
 <?php foreach ([['start','Démarrer',''],['stop','Arrêter','danger'],['restart','Redémarrer','warning'],['firestorm','Mode Firestorm','secondary']] as $btn): ?>
 <form method="post">
@@ -492,6 +507,38 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </form>
 <?php endif ?>
 </div></details>
+<?php endif ?>
+<?php if ($page === 'maintenance'): ?>
+<section class="panel">
+<h2>Maintenance générale — tous les avatars</h2>
+<p class="muted">Arrête ou relance uniquement les services OpenSim AI Bridge : BloodMoon AI, Jolie Candy et les futurs bots. ROBUST, Money et les simulateurs ne sont pas concernés.</p>
+<?php if ($fleet === null): ?>
+<div class="notice error">État global indisponible. Le contrôleur doit être mis à jour.</div>
+<?php else: ?>
+<div class="grid">
+<div class="stat"><small>Services AI enregistrés</small><strong><?= esc((string) ($fleet['total'] ?? '?')) ?></strong></div>
+<div class="stat"><small>Services en cours</small><strong><?= esc((string) ($fleet['running'] ?? '?')) ?></strong></div>
+<div class="stat"><small>Verrou global</small><strong><?= !empty($fleet['maintenance']) ? 'Actif' : 'Inactif' ?></strong></div>
+</div>
+<?php if (empty($fleet['maintenance'])): ?>
+<p>Cette opération arrête tous les bots et empêche leur redémarrage, y compris après reboot, pendant le remplacement de DLL communes.</p>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="maintenance">
+<fieldset><legend>Confirmation</legend><label><input type="checkbox" name="fleet_confirm" value="yes" required> Confirmer l'arrêt général des avatars AI.</label></fieldset>
+<button class="danger" name="action" value="fleet_stop">Arrêter tous les bots et verrouiller</button>
+</form>
+<?php else: ?>
+<p>Maintenance active. Après la mise à jour, seuls les bots actifs avant l'arrêt seront relancés. Les modes Firestorm individuels seront conservés.</p>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="maintenance">
+<fieldset><legend>Confirmation</legend><label><input type="checkbox" name="fleet_confirm" value="yes" required> La mise à jour est terminée, autoriser les reconnexions.</label></fieldset>
+<button name="action" value="fleet_resume">Terminer la maintenance et relancer</button>
+</form>
+<?php endif ?>
+<?php endif ?>
+</section>
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
 <section class="panel"><h2>Modules et fonctionnalités</h2>
