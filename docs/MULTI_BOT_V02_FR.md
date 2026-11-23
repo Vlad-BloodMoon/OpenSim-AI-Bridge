@@ -65,3 +65,17 @@ Chaque requête POST inclut l'identifiant serveur du bot sélectionné et sa rub
 ## Actualisation des informations — 23 novembre 2026
 
 Les anciens bandeaux de succès (« connexion en cours » / « Commande exécutée ») restaient à l'écran après une action POST, sans indiquer la réalité de la connexion. Le correctif utilise **POST → HTTP 303 → GET** et une notification de session consommée une seule fois. La page **Tableau de bord** se réactualise automatiquement toutes les 10 secondes pour lire la présence et l'état réels depuis le contrôleur, sans republier de commande. Les pages **Mes avatars** et **Configuration** ne s'actualisent pas automatiquement afin de ne pas perdre des saisies. Ceci est un rechargement ciblé de page, pas encore une API AJAX en temps réel. Vérifier en production qu'un démarrage, un arrêt et la connexion de Jolie Candy mettent à jour l'état sans laisser de bandeau obsolète.
+
+## Maintenance globale de tous les bots (23 novembre 2026)
+
+Depuis **Maintenance générale**, l'administrateur peut choisir **Arrêter tous les bots et verrouiller**, après avoir coché une confirmation explicite. Le contrôleur, et non PHP, détermine automatiquement la liste autorisée de services : `opensim-ai-bridge.service` et `opensim-ai-bridge@<id>.service` pour chaque bot enregistré. Aucune unité ROBUST, Money ou simulateur n'est ciblée.
+
+- Avant l'arrêt, un instantané privé `/var/lib/opensim-ai-bridge/global-maintenance-state.json` mémorise les services effectivement actifs.
+- Un verrou persistant `/var/lib/opensim-ai-bridge/global-maintenance.lock` empêche depuis le contrôleur les démarrages individuels, les reprises Firestorm et la création de bots. Les unités systemd principale et à instances utilisent également `ConditionPathExists=!/var/lib/opensim-ai-bridge/global-maintenance.lock` : après reboot, aucun bot ne doit redémarrer avant une reprise explicite.
+- L'arrêt effectif est transmis à systemd en une seule commande `stop` pour tous les bots.
+- Le bouton **Terminer la maintenance et relancer** enlève le verrou puis tente de relancer **uniquement** ceux actifs avant l'arrêt, sans supprimer les verrous Firestorm individuels ni démarrer un bot précédemment arrêté.
+- Le contrôleur local reste accessible pendant toute l'opération, et le menu Web affiche le nombre de services enregistrés, actifs et l'état du verrou global.
+
+**Installation** : relancer `scripts/install-multibot.sh` depuis le nouvel artefact GitHub pour appliquer le contrôleur et ajouter le drop-in systemd de l'ancien service. Installer le PHP du même artefact. Ces opérations ne nécessitent pas d'arrêter les bots. Avant d'utiliser le bouton global, vérifier la présence du drop-in, des deux unités et des fichiers privés, puis effectuer un arrêt et une reprise en conditions contrôlées.
+
+**Attention :** pendant la maintenance, remplacer uniquement les DLL réellement partagées sous `/home/louna49400/OpenSim-AI-Bridge/`. Le script ne remplace aucune DLL automatiquement. Ne jamais supprimer `appsettings.json`, les mots de passe, ni les profils sous `/var/lib/opensim-ai-bridge/bots/`. La reprise peut échouer partiellement ; regarder les états réels avant de déclarer l'opération terminée.
