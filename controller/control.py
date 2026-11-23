@@ -210,7 +210,7 @@ def fleet_stop(confirmed):
     return fleet_status()
 
 
-def fleet_resume(confirmed):
+def fleet_resume(confirmed, legacy_install):
     if not confirmed:
         raise ControlError("Confirm global resume")
     if not FLEET_LOCK.exists():
@@ -225,7 +225,7 @@ def fleet_resume(confirmed):
     failed = 0
     for unit in prior:
         if unit == UNIT:
-            personal_lock = None  # Existing main-avatar Firestorm lock is checked by systemd
+            personal_lock = legacy_install / "maintenance.lock"
         else:
             bot_id = unit[len("opensim-ai-bridge@"):-len(".service")]
             personal_lock = multi_bot.bot_path(bot_id) / "maintenance.lock"
@@ -250,7 +250,7 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
     if command == "fleet_stop":
         return fleet_stop(confirm)
     if command == "fleet_resume":
-        return fleet_resume(confirm)
+        return fleet_resume(confirm, install)
     if FLEET_LOCK.exists() and command in ("create_bot", "start", "restart", "resume"):
         raise ControlError("Global maintenance active")
     if command == "create_bot":
