@@ -41,6 +41,8 @@ sed -e "s|@INSTALL_DIR@|$BASE|g" \
 # An additive drop-in leaves the existing service definition untouched.
 install -d -o root -g root -m 0755 /etc/systemd/system/opensim-ai-bridge.service.d
 printf '%s\n' '[Unit]' 'ConditionPathExists=!/var/lib/opensim-ai-bridge/global-maintenance.lock' > /etc/systemd/system/opensim-ai-bridge.service.d/10-global-maintenance.conf
+# Collect per-service usage through systemd without introducing arbitrary process inspection.
+printf '%s\n' '[Service]' 'CPUAccounting=yes' 'MemoryAccounting=yes' > /etc/systemd/system/opensim-ai-bridge.service.d/20-resource-accounting.conf
 
 /usr/bin/python3 -m py_compile /usr/local/libexec/opensim-ai-bridge/control.py /usr/local/libexec/opensim-ai-bridge/multi_bot.py
 /usr/bin/systemd-analyze verify /etc/systemd/system/opensim-ai-bridge@.service /etc/systemd/system/opensim-ai-bridge-control.service
