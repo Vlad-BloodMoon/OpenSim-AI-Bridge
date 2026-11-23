@@ -180,7 +180,7 @@ def save_settings(install, values):
     region = values.get("region")
     if not isinstance(region, str) or not 1 <= len(region.strip()) <= 80 or any(ord(c) < 32 for c in region):
         raise ControlError("Invalid region name")
-    for key, low, high in (("x", 0, 256), ("y", 0, 256), ("z", 0, 4096)):
+    for key, low, high in (("x", 0, 8192), ("y", 0, 8192), ("z", 0, 4096)):
         if type(values[key]) is not int or not low <= values[key] <= high:
             raise ControlError(f"Invalid {key} position")
     for key in ("enableIM", "enableLocalChat", "reconnectEnabled"):
