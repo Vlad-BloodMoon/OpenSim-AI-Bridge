@@ -57,7 +57,7 @@ function check_csrf(): bool {
     return isset($_POST['csrf']) && is_string($_POST['csrf'])
         && hash_equals(csrf_token(), $_POST['csrf']);
 }
-function request_control(string $action, bool $confirm = false): array {
+function request_control(string $action, bool $confirm = false, ?array $settings = null): array {
     $errno = 0;
     $errstr = '';
     $fp = @stream_socket_client('unix://' . CONTROL_SOCKET, $errno, $errstr, 2.0);
@@ -65,7 +65,9 @@ function request_control(string $action, bool $confirm = false): array {
         return ['ok' => false, 'error' => 'Contrôleur local indisponible'];
     }
     stream_set_timeout($fp, 35);
-    $sent = fwrite($fp, json_encode(['action' => $action, 'confirm' => $confirm], JSON_THROW_ON_ERROR) . "\n");
+    $payload = ['action' => $action, 'confirm' => $confirm];
+    if ($settings !== null) $payload['settings'] = $settings;
+    $sent = fwrite($fp, json_encode($payload, JSON_THROW_ON_ERROR) . "\n");
     if ($sent === false) {
         fclose($fp);
         return ['ok' => false, 'error' => 'Erreur de communication avec le contrôleur'];
@@ -128,7 +130,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if (in_array($action, $allowed, true)) {
+        if ($action === 'save_settings') {
+            $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
+            $coords = [];
+            foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $limit) {
+                $raw = $_POST[$axis] ?? null;
+                $number = filter_var($raw, FILTER_VALIDATE_INT, ['options' => ['min_range' => 0, 'max_range' => $limit]]);
+                if ($number === false) {
+                    $error = 'Coordonnées invalides.';
+                    break;
+                }
+                $coords[$axis] = $number;
+            }
+            if ($error === '' && ($region === '' || mb_strlen($region) > 80)) {
+                $error = 'Nom de région invalide.';
+            }
+            if ($error === '') {
+                $settings = [
+                    'region' => $region,
+                    'x' => $coords['x'],
+                    'y' => $coords['y'],
+                    'z' => $coords['z'],
+                    'enableIM' => ($_POST['enableIM'] ?? '') === '1',
+                    'enableLocalChat' => ($_POST['enableLocalChat'] ?? '') === '1',
+                    'reconnectEnabled' => ($_POST['reconnectEnabled'] ?? '') === '1',
+                ];
+                $response = request_control('save_settings', false, $settings);
+                if ($response['ok'] ?? false) {
+                    $message = 'Configuration sauvegardée. Redémarre le bot depuis cette page pour appliquer les changements.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Erreur de sauvegarde');
+                }
+            }
+        } elseif (in_array($action, $allowed, true)) {
             if ($action === 'resume' && ($_POST['viewer_closed'] ?? '') !== 'yes') {
                 $error = 'Confirme d’abord la fermeture de Firestorm.';
             } else {
@@ -149,6 +183,8 @@ if ($authenticated) {
 }
 $status = $authenticated ? request_control('status') : null;
 $state = is_array($status['result'] ?? null) ? $status['result'] : null;
+$settingsResult = $authenticated ? request_control('get_settings') : null;
+$botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
 ?>
 <!doctype html>
 <html lang="fr">
@@ -178,7 +214,7 @@ button.warning{background:#af6421}
 button.danger{background:#a73548}
 button.secondary{background:#34415d}
 button:focus-visible,input:focus-visible{outline:3px solid #91baff;outline-offset:2px}
-input[type=password]{width:100%;padding:.85rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.5rem 0 1.2rem}
+input[type=text],input[type=number]{width:100%;padding:.75rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.4rem 0}input[type=password]{width:100%;padding:.85rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.5rem 0 1.2rem}
 label{display:block}
 .notice{padding:.9rem 1rem;border-radius:11px;margin:1rem 0;background:#1b3a37}
 .error{background:#512633}
@@ -265,6 +301,33 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 </form>
 </section>
 <?php endif ?>
+<section class="panel">
+<h2>Configuration de l'avatar</h2>
+<p class="muted">Choisis la région et les coordonnées où BloodMoon AI apparaîtra à sa prochaine connexion. La sauvegarde ne déplace pas immédiatement l'avatar connecté : un redémarrage du bot applique ces paramètres.</p>
+<?php if ($botSettings === null): ?>
+<p class="muted">Les paramètres ne sont pas encore accessibles. Mets à jour le contrôleur local pour activer leur édition.</p>
+<?php else: ?>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<label for="region">Région de démarrage</label>
+<input type="text" id="region" name="region" maxlength="80" required value="<?= esc((string) ($botSettings['region'] ?? '')) ?>">
+<div class="grid" style="margin:1rem 0">
+<?php foreach (['x' => 256, 'y' => 256, 'z' => 4096] as $axis => $max): ?>
+<div>
+<label for="position-<?= esc($axis) ?>">Position <?= strtoupper($axis) ?></label>
+<input type="number" id="position-<?= esc($axis) ?>" name="<?= esc($axis) ?>" min="0" max="<?= $max ?>" step="1" required value="<?= esc((string) ($botSettings[$axis] ?? 0)) ?>">
+</div>
+<?php endforeach ?>
+</div>
+<fieldset><legend>Fonctionnement</legend>
+<?php foreach (['enableIM' => 'Répondre aux IM', 'enableLocalChat' => 'Observer le chat local', 'reconnectEnabled' => 'Reconnexion automatique après déconnexion'] as $key => $label): ?>
+<label style="margin:.6rem 0"><input type="checkbox" name="<?= esc($key) ?>" value="1" <?= !empty($botSettings[$key]) ? 'checked' : '' ?>> <?= esc($label) ?></label>
+<?php endforeach ?>
+</fieldset>
+<button name="action" value="save_settings">Enregistrer la configuration</button>
+</form>
+<?php endif ?>
+</section>
 <section class="panel">
 <h2>Prochaines fonctionnalités</h2>
 <p class="muted">FAQ multilingue · Traduction BloodMoon · Autorisations UUID · Fournisseurs IA distants. Ces modules ne sont pas encore actifs.</p>
