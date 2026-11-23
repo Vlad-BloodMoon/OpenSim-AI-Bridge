@@ -36,7 +36,7 @@ jobs:
       - name: Validate control scripts and web dashboard
         run: |
           bash -n scripts/*.sh
-          python3 -m py_compile controller/control.py
+          python3 -m py_compile controller/control.py controller/multi_bot.py
           php -l web/OpenSim_AI/index.php
 
       - name: Restore dependencies
@@ -69,9 +69,10 @@ jobs:
           chmod +x dist/linux-x64/scripts/*.sh
           cp deploy/systemd/*.example dist/linux-x64/deploy/systemd/
           mkdir -p dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI
-          cp controller/control.py dist/linux-x64/controller/
+          cp controller/control.py controller/multi_bot.py dist/linux-x64/controller/
           cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
           cp docs/WEB_INSTALL_V02_FR.md dist/linux-x64/
+          cp docs/MULTI_BOT_V02_FR.md dist/linux-x64/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
