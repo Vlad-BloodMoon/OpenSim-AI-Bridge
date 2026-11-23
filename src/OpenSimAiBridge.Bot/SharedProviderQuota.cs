@@ -26,7 +26,7 @@ public sealed class SharedProviderQuota
     public bool TryReserve(string provider, DateTimeOffset now, int maxPerHour, out string reason)
     {
         reason = "unavailable";
-        if (provider is not ("Groq" or "OpenRouter" or "OpenAI") || maxPerHour is < 1 or > 120)
+        if (provider is not ("Groq" or "OpenRouter" or "Gemini" or "OpenAI") || maxPerHour is < 1 or > 120)
             return false;
         // Avoid creating an SQLite file in an unexpected directory.
         if (!Directory.Exists(Path.GetDirectoryName(databasePath)))
