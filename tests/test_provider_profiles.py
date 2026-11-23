@@ -37,7 +37,7 @@ class MultiProviderConfigurationTests(unittest.TestCase):
         c["profiles"] += [
             {"id": "router", "provider": "OpenRouter", "model": "openrouter/free",
              "enabled": True, "verified": True, "apiKey": ""},
-            {"id": "gemini", "provider": "Gemini", "model": "gemini-2.5-flash-lite",
+            {"id": "gemini", "provider": "Gemini", "model": "gemini-3-flash-preview",
              "enabled": True, "verified": True, "apiKey": ""},
         ]
         profiles = provider_profiles.normalize(c)["Profiles"]
