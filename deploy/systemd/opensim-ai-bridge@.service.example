@@ -8,6 +8,8 @@ StartLimitIntervalSec=120
 StartLimitBurst=4
 
 [Service]
+CPUAccounting=yes
+MemoryAccounting=yes
 Type=simple
 User=@BOT_USER@
 Group=@BOT_USER@
