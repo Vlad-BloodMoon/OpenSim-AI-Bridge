@@ -66,6 +66,38 @@ if (args.Length == 1 && args[0] == "--verify-ai-safety")
     return 0;
 }
 
+// Offline proof that the shared RAG retriever remains provider-independent and safe.
+if (args.Length == 1 && args[0] == "--verify-knowledge")
+{
+    var expression = KnowledgeSearch.MakeFtsExpression("Malédiction vampire ?");
+    if (expression is null || !expression.Contains("\"malédiction\"", StringComparison.Ordinal) ||
+        KnowledgeSearch.MakeFtsExpression("!!!") is not null)
+    {
+        Console.Error.WriteLine("Knowledge query tokenization failed.");
+        return 1;
+    }
+    var context = KnowledgeSearch.BuildContext(new[] {
+        new KnowledgeHit("https://bloodmoonpack.com/roleplay/pages/guide.php",
+                         "Grimoire", "Les vampires jouent un rôle important.", "roleplay")
+    });
+    if (!context.Contains("https://bloodmoonpack.com/roleplay/pages/guide.php",
+                          StringComparison.Ordinal) ||
+        !context.Contains("NON FIABLES", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("Knowledge source and safety markers missing.");
+        return 1;
+    }
+    var search = new KnowledgeSearch(Path.Combine(Path.GetTempPath(),
+                                                  $"missing-knowledge-{Guid.NewGuid():N}.db"));
+    if (search.Search("Vampire").Count != 0)
+    {
+        Console.Error.WriteLine("Missing knowledge index must fail safely.");
+        return 1;
+    }
+    Console.WriteLine("Shared knowledge retrieval safety checks passed.");
+    return 0;
+}
+
 // Static free IM commands remain available even when remote AI is off.
 // Never place avatar passwords in configuration files or source code.
 var configPath = args.Length > 0 ? args[0] : "appsettings.json";
