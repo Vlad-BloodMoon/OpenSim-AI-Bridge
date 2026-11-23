@@ -284,7 +284,7 @@ def save_multi_ai_settings(install, values):
             os.fchown(fd, metadata.st_uid, metadata.st_gid)
             with os.fdopen(fd, "w", encoding="utf-8") as output:
                 json.dump(doc, output, indent=2, ensure_ascii=False)
-                output.write("\\n")
+                output.write("\n")
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(temporary, path)
