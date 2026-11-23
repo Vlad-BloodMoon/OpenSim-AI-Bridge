@@ -58,6 +58,9 @@ jobs:
       - name: Verify remote AI safe defaults without API credentials
         run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-ai-safety
 
+      - name: Verify shared SQLite knowledge retrieval without a database
+        run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-knowledge
+
       - name: Publish for Linux x64 (framework-dependent)
         run: |
           dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
