@@ -23,7 +23,7 @@ if (args.Length == 1 && args[0] == "--verify-invariant-rate")
     return 0;
 }
 
-// Offline safety check: remote AI cannot be used without an explicit allowlist and key.
+// Offline safety check: remote AI requires opt-in and key; public access is restricted to Groq.
 if (args.Length == 1 && args[0] == "--verify-ai-safety")
 {
     using var disabled = new RemoteAiResponder(new RemoteAiSettings { Enabled = false });
@@ -32,6 +32,35 @@ if (args.Length == 1 && args[0] == "--verify-ai-safety")
     {
         Console.Error.WriteLine("AI must be disabled without explicit authorization.");
         return 1;
+    }
+    // Public access is Groq-only, requires explicit opt-in and a configured key.
+    var previous = Environment.GetEnvironmentVariable("OSAI_AI_TEST_KEY");
+    try
+    {
+        Environment.SetEnvironmentVariable("OSAI_AI_TEST_KEY", "offline-test-not-a-real-key");
+        var opts = new RemoteAiSettings {
+            Enabled = true, PublicAccess = true, Provider = "Groq",
+            ApiKeyEnv = "OSAI_AI_TEST_KEY"
+        };
+        using var publicGroq = new RemoteAiResponder(opts);
+        using var publicOpenAi = new RemoteAiResponder(new RemoteAiSettings {
+            Enabled = true, PublicAccess = true, Provider = "OpenAI",
+            ApiKeyEnv = "OSAI_AI_TEST_KEY"
+        });
+        using var privateGroq = new RemoteAiResponder(new RemoteAiSettings {
+            Enabled = true, PublicAccess = false, Provider = "Groq",
+            ApiKeyEnv = "OSAI_AI_TEST_KEY"
+        });
+        if (!publicGroq.IsAuthorized(Guid.NewGuid()) || publicOpenAi.IsAuthorized(Guid.NewGuid()) ||
+            privateGroq.IsAuthorized(Guid.NewGuid()))
+        {
+            Console.Error.WriteLine("Remote AI access control regression.");
+            return 1;
+        }
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("OSAI_AI_TEST_KEY", previous);
     }
     Console.WriteLine("Remote AI opt-in safety checks passed.");
     return 0;
@@ -114,7 +143,7 @@ Console.CancelKeyPress += (_, e) =>
 };
 
 using var ai = new RemoteAiResponder(options.Ai);
-Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for authorized IMs" : "disabled")}.");
+Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for configured IM access" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
 Console.WriteLine($"Test region: {options.Grid.StartLocation.RegionName}");
 Console.WriteLine("Ctrl+C to stop; IM 'ping', 'help' or 'where' to test.");
