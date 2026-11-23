@@ -1,6 +1,7 @@
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "controller"))
 import multi_bot
@@ -41,6 +42,32 @@ class BotValidationTests(unittest.TestCase):
         c["Unit"] = "ssh.service"
         with self.assertRaises(multi_bot.BotRegistryError):
             multi_bot.validate_create(c)
+
+    def test_main_avatar_cannot_be_deleted(self):
+        with self.assertRaises(multi_bot.BotRegistryError):
+            multi_bot.delete_bot("main", "BloodMoon AI")
+
+    @patch.object(multi_bot, "bot_path")
+    def test_name_must_match_before_service_is_touched(self, mock_path):
+        mock_path.return_value = Path("/tmp/test-delete-bot-nonexistent")
+        with self.assertRaises(multi_bot.BotRegistryError):
+            multi_bot.delete_bot("0123456789abcdef", "wrong name")
+
+    @patch.object(multi_bot.subprocess, "run")
+    @patch.object(multi_bot, "get_metadata")
+    @patch.object(multi_bot, "bot_path")
+    def test_stop_failure_preserves_private_files(self, mock_path, mock_metadata, mock_run):
+        from tempfile import TemporaryDirectory
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "0123456789abcdef"
+            path.mkdir()
+            (path / "bot-password.txt").write_text("private")
+            mock_path.return_value = path
+            mock_metadata.return_value = {"firstName": "Jolie", "lastName": "Candy"}
+            mock_run.return_value = MagicMock(returncode=1)
+            with self.assertRaisesRegex(multi_bot.BotRegistryError, "stop and disable"):
+                multi_bot.delete_bot("0123456789abcdef", "Jolie Candy")
+            self.assertTrue((path / "bot-password.txt").exists())
 
 
 if __name__ == "__main__":
