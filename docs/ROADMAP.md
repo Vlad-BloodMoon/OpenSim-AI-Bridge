@@ -13,9 +13,9 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 **Acceptance:** from Firestorm, an administrator sees the avatar and completes an IM round-trip without running any graphic viewer.
 
 ## V0.2 — Web admin & free responses (immediate priority)
-- [ ] Run bot as separate non-root systemd service with restricted privileges and supervised startup.
+- [x] Run bot under a non-root systemd service (initial start/stop tests passed on BloodMoon 2026-11-23; further hardening planned).
 - [ ] Authenticated Web controls: start, stop, restart, status/position/logs.
-- [ ] Persistent **Firestorm maintenance mode**: inhibit autoreconnect across process/server restarts until explicit admin release.
+- [x] Firestorm lock prevents manual systemd startup; stop/resume verified 2026-11-23. **Survival of full server reboot still untested**.
 - [ ] Distinguish intentional shutdown from network failure; prevent session battles with Firestorm.
 - [ ] Secure web login, roles and API.
 - [ ] Dashboard for bot status/location, technical logs and controls.
