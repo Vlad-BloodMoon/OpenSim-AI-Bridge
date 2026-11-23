@@ -15,6 +15,12 @@ class BotValidationTests(unittest.TestCase):
     def test_valid(self):
         self.assertEqual(multi_bot.validate_create(self.valid())["region"], "BloodMoon_TEST")
 
+    def test_varregion_coordinates_above_256_are_allowed(self):
+        c = self.valid()
+        c["x"], c["y"], c["z"] = 347, 320, 124
+        result = multi_bot.validate_create(c)
+        self.assertEqual((result["x"], result["y"], result["z"]), (347, 320, 124))
+
     def test_no_unit_injection(self):
         for bad in ("../../root", "main", "test;shutdown", "A" * 16, "", "deadbeef"):
             with self.subTest(bad=bad):
@@ -30,7 +36,7 @@ class BotValidationTests(unittest.TestCase):
                     multi_bot.validate_create(c)
 
     def test_valid_coordinates_only(self):
-        for field, value in (("x", -1), ("y", 257), ("z", 4097), ("x", True), ("y", 5.2)):
+        for field, value in (("x", -1), ("y", 8193), ("z", 4097), ("x", True), ("y", 5.2)):
             with self.subTest(field=field, value=value):
                 c = self.valid()
                 c[field] = value
