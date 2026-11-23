@@ -341,30 +341,47 @@ def test_multi_ai_profile(install, values):
         key = (install / "ai-api-key.txt").read_text(encoding="utf-8").strip()
     else:
         raise ControlError("Configure a provider key before testing")
-    # OpenRouter's free router can pick a reasoning model. With only 24
-    # completion tokens, the entire budget may be spent on hidden reasoning
-    # and the API returns HTTP 200 with empty visible text.
-    payload = json.dumps({"model": model, "messages": [
-        {"role": "user", "content": "Reply with the single word OK."}],
-        "max_tokens": 1024 if provider in ("OpenRouter", "Gemini") else 64}).encode()
+    # Gemini uses its native generateContent API, not OpenAI compatibility.
+    # This same request shape is also used by the in-world bot.
+    if provider == "Gemini":
+        url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
+        payload = json.dumps({
+            "contents": [{"role": "user", "parts": [{"text": "Réponds uniquement BONJOUR."}]}],
+            "generationConfig": {"maxOutputTokens": 768},
+        }).encode()
+        headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
+    else:
+        url = endpoints[provider]
+        payload = json.dumps({"model": model, "messages": [
+            {"role": "user", "content": "Reply with the single word OK."}],
+            "max_tokens": 1024 if provider == "OpenRouter" else 64}).encode()
+        headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+
     class DenyRedirects(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
             raise ControlError("Provider test redirected; test aborted")
+
     opener = urllib.request.build_opener(DenyRedirects())
-    request = urllib.request.Request(
-        endpoints[provider], data=payload, method="POST",
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+    request = urllib.request.Request(url, data=payload, method="POST", headers=headers)
     try:
         with opener.open(request, timeout=35 if provider in ("OpenRouter", "Gemini") else 15) as response:
-            result = json.loads(response.read(8192))
-            content = result["choices"][0]["message"]["content"]
+            result = json.loads(response.read(16384))
+            if provider == "Gemini":
+                candidates = result.get("candidates") or []
+                parts = (candidates[0].get("content") or {}).get("parts") or [] if candidates else []
+                content = " ".join(p.get("text", "") for p in parts if isinstance(p, dict))
+                reason = str(candidates[0].get("finishReason", "unknown")) if candidates else "no candidate"
+            else:
+                choices = result.get("choices") or []
+                content = ((choices[0].get("message") or {}).get("content") or "") if choices else ""
+                reason = str(choices[0].get("finish_reason", "unknown")) if choices else "no choice"
             if not isinstance(content, str) or not content.strip():
-                # Do not expose provider raw response, API keys or hidden reasoning.
-                reason = str(result.get("choices", [{}])[0].get("finish_reason", "unknown"))
-                raise ControlError("Provider returned no visible text (finish_reason=" + reason[:24] + "). Retry or choose another free model.")
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError,
-            TypeError, KeyError, OSError) as exc:
-        raise ControlError("Provider test failed. Check the model, key and quotas.") from exc
+                raise ControlError("Provider returned no visible text (reason=" + reason[:24] + ").")
+    except urllib.error.HTTPError as exc:
+        # Show the HTTP status without echoing the provider response or any credentials.
+        raise ControlError("Provider HTTP " + str(exc.code) + ". Check model availability and quota.") from exc
+    except (urllib.error.URLError, TimeoutError, ValueError, TypeError, KeyError, OSError) as exc:
+        raise ControlError("Provider test failed: network or invalid response.") from exc
     profile["Verified"] = True
     fd, temporary = tempfile.mkstemp(prefix=".ai-test-", dir=str(path.parent))
     try:
