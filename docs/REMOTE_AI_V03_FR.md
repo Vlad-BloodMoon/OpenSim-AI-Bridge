@@ -51,3 +51,7 @@ La clé API n'est jamais renvoyée vers le navigateur. Elle se trouve dans un fi
 ## Sélecteur de modèles dans Modules IA (23 novembre 2026)
 
 Le formulaire Web propose désormais une liste déroulante dépendant du fournisseur (Groq, OpenAI, OpenRouter). Choisir un modèle renseigne le champ `Identifiant du modèle`, conservé comme saisie modifiable pour les modèles non listés ou récemment publiés. Changer de fournisseur propose son premier modèle ; ouvrir la page conserve un identifiant déjà enregistré même s'il n'est pas dans les suggestions. Aucun appel API n'est effectué pour remplir cette liste ; les droits d'accès et les catalogues restent ceux du fournisseur et de son compte. La modification ne touche ni au contrôleur ni à la DLL et s'installe en remplaçant uniquement `web/OpenSim_AI/index.php`.
+
+### Correction du sélecteur vide (23 novembre 2026)
+
+Le sélecteur pouvait rester vide parce que la politique Content-Security-Policy historique de la page interdisait tous les scripts. `index.php` emploie désormais un nonce CSP aléatoire par réponse HTML (`script-src 'nonce-...'`) sur son seul script de sélection, sans recourir à `unsafe-inline` pour JavaScript. La liste peut ainsi être initialisée sans élargir l'exécution d'autres scripts. Correction purement Web ; aucune modification des clés, UUID, réglages IA, service .NET ou contrôleur.
