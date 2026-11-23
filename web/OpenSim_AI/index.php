@@ -739,7 +739,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php
 $profiles = is_array($multiSettings['profiles'] ?? null) ? $multiSettings['profiles'] : [];
 $providersAlready = array_column($profiles, 'provider');
-foreach (['OpenRouter' => 'openrouter/free', 'OpenAI' => 'gpt-4.1-mini'] as $provider => $model) {
+foreach (['OpenRouter' => 'openrouter/free'] as $provider => $model) {
     if (!in_array($provider, $providersAlready, true))
         $profiles[] = ['id' => strtolower($provider), 'provider' => $provider, 'model' => $model,
                        'enabled' => false, 'verified' => false, 'hasKey' => false];
