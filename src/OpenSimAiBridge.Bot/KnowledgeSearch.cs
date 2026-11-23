@@ -109,6 +109,16 @@ public sealed class KnowledgeSearch
         return score;
     }
 
+    private static string DocumentKey(KnowledgeHit hit, bool curseQuestion)
+    {
+        if (!curseQuestion || !hit.Url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            return hit.Url;
+        // Alternate-language PDFs of the same manual should occupy one slot,
+        // not three consecutive citations (THE_CURSE_FR/DE/ES.pdf).
+        var normalized = Regex.Replace(hit.Url, @"(?i)(?:_FR|_EN|_GB|_ES|_DE|_IT|_PT)(?=\.pdf$)", "");
+        return normalized;
+    }
+
     public IReadOnlyList<KnowledgeHit> Search(string question, int limit = 3)
     {
         var expression = MakeFtsExpression(question);
@@ -158,7 +168,7 @@ public sealed class KnowledgeSearch
                     Rank = Score(hit, terms, curseQuestion, governanceQuestion)
                 })
                 .OrderByDescending(x => x.Rank).ThenBy(x => x.Index)
-                .GroupBy(x => x.Hit.Url, StringComparer.OrdinalIgnoreCase)
+                .GroupBy(x => DocumentKey(x.Hit, curseQuestion), StringComparer.OrdinalIgnoreCase)
                 .Select(group => group.First().Hit)
                 .Take(limit)
                 .ToArray();
