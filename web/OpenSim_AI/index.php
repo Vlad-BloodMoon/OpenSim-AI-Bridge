@@ -761,7 +761,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php
 $profiles = is_array($multiSettings['profiles'] ?? null) ? $multiSettings['profiles'] : [];
 $providersAlready = array_column($profiles, 'provider');
-foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-2.5-flash-lite'] as $provider => $model) {
+foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-3-flash-preview'] as $provider => $model) {
     if (!in_array($provider, $providersAlready, true))
         $profiles[] = ['id' => strtolower($provider), 'provider' => $provider, 'model' => $model,
                        'enabled' => false, 'verified' => false, 'hasKey' => false];
