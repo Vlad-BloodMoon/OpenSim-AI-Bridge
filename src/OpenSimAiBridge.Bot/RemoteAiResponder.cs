@@ -74,7 +74,7 @@ public sealed class RemoteAiResponder : IDisposable
         (p.Provider == "OpenRouter" &&
             (p.Model == "openrouter/free" || p.Model.EndsWith(":free", StringComparison.Ordinal))) ||
         (p.Provider == "Gemini" &&
-            (p.Model == "gemini-2.5-flash-lite" || p.Model == "gemini-2.5-flash"));
+            (p.Model == "gemini-3-flash-preview"));
 
     private static bool ValidProfile(RemoteAiProfile p) =>
         p.Enabled && p.Verified && SafePublicModel(p) &&
