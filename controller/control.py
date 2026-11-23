@@ -358,7 +358,9 @@ def test_multi_ai_profile(install, values):
             result = json.loads(response.read(8192))
             content = result["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
-                # Do not expose provider raw response, API keys or hidden reasoning.\n                reason = str(result.get("choices", [{}])[0].get("finish_reason", "unknown"))\n                raise ControlError("Provider returned no visible text (finish_reason=" + reason[:24] + "). Retry or choose another free model.")
+                # Do not expose provider raw response, API keys or hidden reasoning.
+                reason = str(result.get("choices", [{}])[0].get("finish_reason", "unknown"))
+                raise ControlError("Provider returned no visible text (finish_reason=" + reason[:24] + "). Retry or choose another free model.")
     except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError,
             TypeError, KeyError, OSError) as exc:
         raise ControlError("Provider test failed. Check the model, key and quotas.") from exc
