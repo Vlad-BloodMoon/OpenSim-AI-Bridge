@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Globalization;
 using LibreMetaverse;
+using OpenSimAiBridge;
 
 // CoreJ2K 2.4.x parses JPEG2000 encoder 'rate' using float.Parse without
 // specifying CultureInfo. The codec supplies dot-decimal rates (e.g. 2.8125),
@@ -98,7 +99,8 @@ Console.CancelKeyPress += (_, e) =>
     stop.Cancel();
 };
 
-Console.WriteLine("OpenSim AI Bridge V0.1 (experimental) — no OpenAI calls.");
+using var ai = new RemoteAiResponder(options.Ai);
+Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for authorized IMs" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
 Console.WriteLine($"Test region: {options.Grid.StartLocation.RegionName}");
 Console.WriteLine("Ctrl+C to stop; IM 'ping', 'help' or 'where' to test.");
@@ -122,16 +124,40 @@ do
             if (e.IM.FromAgentID == client.Self.AgentID || !client.Network.Connected)
                 return;
 
-            // This is a deliberately narrow, free command handler.
-            // Never echo arbitrary text, or respond to group/inventory/system IMs.
-            string? reply = e.IM.Message.Trim().ToLowerInvariant() switch
+            // Only direct person-to-person IMs, never group notices or inventory offers.
+            if (e.IM.Dialog != InstantMessageDialog.MessageFromAgent)
+                return;
+            var message = e.IM.Message?.Trim() ?? "";
+            if (message.Length == 0) return;
+            string? reply = message.ToLowerInvariant() switch
             {
                 "ping" => "Pong ! BloodMoon AI Bridge est connecté.",
                 "help" or "aide" => "Commandes de test : ping, help, where.",
                 "where" or "position" => $"Région : {client.Network.CurrentSim?.Name ?? "inconnue"} ; position : {client.Self.SimPosition}",
                 _ => null
             };
-            if (reply is null) return;
+            if (reply is null)
+            {
+                // Remote calls are opt-in, restricted to explicit UUIDs, and never
+                // block the LibreMetaverse IM event thread.
+                if (!ai.IsAuthorized(Guid.Parse(e.IM.FromAgentID.ToString())))
+                    return;
+                var recipient = e.IM.FromAgentID;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        var result = await ai.ReplyAsync(Guid.Parse(recipient.ToString()), message, stop.Token);
+                        if (result is not null && client.Network.Connected && !stop.IsCancellationRequested)
+                            client.Self.InstantMessage(recipient, result);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Remote AI IM handler failed: {ex.GetType().Name}");
+                    }
+                }, stop.Token);
+                return;
+            }
             try
             {
                 client.Self.InstantMessage(e.IM.FromAgentID, reply);
@@ -236,6 +262,7 @@ public sealed class BotOptions
 {
     public GridOptions Grid { get; set; } = new();
     public BotFeatures Bot { get; set; } = new();
+    public RemoteAiSettings Ai { get; set; } = new();
 }
 
 public sealed class GridOptions
