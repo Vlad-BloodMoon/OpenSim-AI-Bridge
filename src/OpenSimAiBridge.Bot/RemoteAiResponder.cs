@@ -14,6 +14,7 @@ public sealed class RemoteAiSettings
     public string Model { get; set; } = "gpt-4.1-mini";
     public string ApiKeyEnv { get; set; } = "OSAI_AI_API_KEY";
     public List<string> AuthorizedUuidList { get; set; } = new();
+    public bool PublicAccess { get; set; } = false;
     public int MaxRequestsPerHour { get; set; } = 30;
     public int MinSecondsBetweenRequests { get; set; } = 15;
     public string SystemPrompt { get; set; } = "Tu es un assistant de la grille OpenSimulator BloodMoon. Réponds avec concision, dans la langue du message. N'invente ni actions ni données de la grille.";
@@ -50,13 +51,13 @@ public sealed class RemoteAiResponder : IDisposable
     }
 
     public bool Ready => settings.Enabled && endpoint is not null &&
-        !string.IsNullOrWhiteSpace(apiKey) && authorized.Count != 0 &&
+        !string.IsNullOrWhiteSpace(apiKey) && (authorized.Count != 0 || (settings.PublicAccess && string.Equals(settings.Provider, "Groq", StringComparison.OrdinalIgnoreCase))) &&
         settings.MaxRequestsPerHour is >= 1 and <= 120 &&
         settings.MinSecondsBetweenRequests is >= 5 and <= 3600 &&
         settings.Model.Length is >= 1 and <= 100 &&
         settings.SystemPrompt.Length <= 1200;
 
-    public bool IsAuthorized(Guid sender) => Ready && authorized.Contains(sender);
+    public bool IsAuthorized(Guid sender) => Ready && (authorized.Contains(sender) || (settings.PublicAccess && string.Equals(settings.Provider, "Groq", StringComparison.OrdinalIgnoreCase)));
 
     public async Task<string?> ReplyAsync(Guid sender, string prompt, CancellationToken cancellationToken)
     {
