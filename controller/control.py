@@ -24,6 +24,8 @@ MAX_REQUEST = 4096
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
 FLEET_SNAPSHOT = FLEET_ROOT / "global-maintenance-state.json"
+# Per-service CPU samples live only in the controller process, never in a Web session.
+_CPU_SAMPLES = {}
 
 
 class ControlError(Exception):
@@ -45,18 +47,57 @@ def systemctl(*arguments, unit=UNIT):
     return result.stdout
 
 
-def service_state(unit=UNIT):
+def _systemd_metric_number(raw):
+    """systemd may return '[not set]' or UINT64_MAX for unavailable accounting."""
+    if not isinstance(raw, str) or not raw.isascii() or not raw.isdecimal():
+        return None
+    value = int(raw)
+    if value >= 2**64 - 1:
+        return None
+    return value
+
+
+def resource_usage(unit, active, properties, now=None):
+    """CPU % of one logical core, measured between controller reads (can exceed 100%)."""
+    if active != "active":
+        _CPU_SAMPLES.pop(unit, None)
+        return {"memoryMb": None, "cpuPercent": None}
+    memory = _systemd_metric_number(properties.get("MemoryCurrent"))
+    cpu_ns = _systemd_metric_number(properties.get("CPUUsageNSec"))
+    observed_at = time.monotonic() if now is None else now
+    previous = _CPU_SAMPLES.get(unit)
+    percent = None
+    if cpu_ns is not None:
+        _CPU_SAMPLES[unit] = (observed_at, cpu_ns)
+        if previous is not None:
+            elapsed = observed_at - previous[0]
+            cpu_delta = cpu_ns - previous[1]
+            if elapsed >= 1 and cpu_delta >= 0:
+                percent = round(100.0 * cpu_delta / (elapsed * 1_000_000_000), 1)
+    else:
+        _CPU_SAMPLES.pop(unit, None)
+    return {"memoryMb": round(memory / (1024 * 1024), 1) if memory is not None else None,
+            "cpuPercent": percent}
+
+
+def service_state(unit=UNIT, with_metrics=False):
     values = {}
-    output = systemctl("show", "--property=ActiveState,SubState,UnitFileState", unit=unit)
+    properties = "ActiveState,SubState,UnitFileState"
+    if with_metrics:
+        properties += ",MemoryCurrent,CPUUsageNSec"
+    output = systemctl("show", f"--property={properties}", unit=unit)
     for line in output.splitlines():
         if "=" in line:
             key, value = line.split("=", 1)
             values[key] = value
-    return {
+    result = {
         "active": values.get("ActiveState", "unknown"),
         "substate": values.get("SubState", "unknown"),
         "enabled": values.get("UnitFileState", "unknown"),
     }
+    if with_metrics:
+        result["resources"] = resource_usage(unit, result["active"], values)
+    return result
 
 
 def create_lock(path):
@@ -289,7 +330,7 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
     if command == "save_settings":
         return save_settings(install, settings)
     if command == "status":
-        return {**service_state(unit), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
+        return {**service_state(unit, with_metrics=True), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
 
     if command in ("start", "restart") and lock.exists():
         raise ControlError("Firestorm maintenance is enabled; resume first")
