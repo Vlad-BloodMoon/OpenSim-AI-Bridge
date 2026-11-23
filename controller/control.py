@@ -330,18 +330,22 @@ def test_multi_ai_profile(install, values):
     keyfile = provider_profiles.provider_key_path(install, provider)
     if keyfile.is_file() and not keyfile.is_symlink():
         key = keyfile.read_text(encoding="utf-8").strip()
-    elif provider == ai.get("Provider") and (install / "ai-api-key.txt").is_file():
+    elif provider == ai.get("Provider") and (install / "ai-api-key.txt").is_file() and not (install / "ai-api-key.txt").is_symlink():
         key = (install / "ai-api-key.txt").read_text(encoding="utf-8").strip()
     else:
         raise ControlError("Configure a provider key before testing")
     payload = json.dumps({"model": model, "messages": [
         {"role": "user", "content": "Reply with the single word OK."}],
         "max_tokens": 24}).encode()
+    class DenyRedirects(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            raise ControlError("Provider test redirected; test aborted")
+    opener = urllib.request.build_opener(DenyRedirects())
     request = urllib.request.Request(
         endpoints[provider], data=payload, method="POST",
         headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(request, timeout=15) as response:
+        with opener.open(request, timeout=15) as response:
             result = json.loads(response.read(8192))
             content = result["choices"][0]["message"]["content"]
             if not isinstance(content, str) or not content.strip():
