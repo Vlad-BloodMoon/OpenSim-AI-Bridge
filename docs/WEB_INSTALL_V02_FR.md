@@ -32,12 +32,12 @@ Le contrôleur tourne sous root pour contacter systemd, avec confinement systemd
 
 1. **Sauvegarder l'installation actuelle.** Vérifier que le service bot existant fonctionne et éviter toute session Firestorm simultanée.
 2. Télécharger l'artifact GitHub Actions `OpenSim-AI-Bridge-v0.2-preview-linux-x64` dans un répertoire temporaire.
-3. Copier `controller/control.py` vers `/home/louna49400/OpenSim-AI-Bridge/controller/control.py`. Ne pas toucher aux fichiers privés, ni aux DLL validées tant qu'aucune mise à jour n'est requise.
+3. Installer `controller/control.py` **dans `/usr/local/libexec/opensim-ai-bridge/control.py`**, propriétaire `root:root`, mode `0644`, répertoires parents non modifiables par `louna49400` ou `www-data`. **Ne jamais exécuter comme root une copie du contrôleur depuis un dossier utilisateur ou Web modifiable.** Ne pas toucher aux fichiers privés ni aux DLL validées.
 4. Générer l'unité de contrôle en remplaçant `@INSTALL_DIR@` par `/home/louna49400/OpenSim-AI-Bridge` dans `deploy/systemd/opensim-ai-bridge-control.service.example`, puis installer dans `/etc/systemd/system/opensim-ai-bridge-control.service`.
 5. `sudo systemctl daemon-reload`, puis `sudo systemctl start opensim-ai-bridge-control.service`. **Ne pas activer l'autostart immédiatement.**
 6. Créer le mot de passe administrateur Web en exécutant **interactivement** `bash scripts/setup-web-admin.sh`. Il faut un mot de passe fort de 14 caractères minimum, distinct de celui de l'avatar.
 7. Créer `/var/www/BloodMoon/OpenSim_AI` puis y copier **uniquement** `web/OpenSim_AI/index.php` et `.htaccess`. Régler propriétaire `louna49400`, groupe `www-data`, répertoire 2775, fichiers 0664.
-8. Vérifier en CLI : `php -l /var/www/BloodMoon/OpenSim_AI/index.php` ; `python3 -m py_compile /home/louna49400/OpenSim-AI-Bridge/controller/control.py`.
+8. Vérifier en CLI : `php -l /var/www/BloodMoon/OpenSim_AI/index.php` ; `python3 -m py_compile /usr/local/libexec/opensim-ai-bridge/control.py`.
 9. Ouvrir en HTTPS `https://bloodmoonpack.com/OpenSim_AI/`, se connecter et tester d'abord le **statut**, ensuite une action à la fois, puis le verrou Firestorm.
 
 **N'exécute pas toutes les étapes sans contrôle :** on validera chaque étape ensemble sur le serveur.
@@ -71,3 +71,7 @@ Le contrôleur est un service **privilégié**. Il doit conserver son code hors 
 Ne pas mettre les secrets, fichiers `/etc` ni le verrou de maintenance sur GitHub.
 
 L'interface peut être ouverte au départ avec un filtrage IP Apache en plus du mot de passe Web, particulièrement pendant les essais.
+
+## Correction sécurité du 23 novembre 2026
+
+L'unité de contrôle exécute désormais le code Python depuis `/usr/local/libexec/opensim-ai-bridge/control.py`, sous propriété `root:root` et répertoire parent non modifiable par les utilisateurs ordinaires. Une unité privilégiée ne doit **jamais** charger son code Python depuis le répertoire de travail `louna49400` susceptible d'être modifié via SFTP.
