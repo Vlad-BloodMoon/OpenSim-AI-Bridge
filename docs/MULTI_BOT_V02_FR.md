@@ -106,3 +106,7 @@ La suppression agit **uniquement sur OpenSim AI Bridge** : le compte ROBUST/Open
 La suppression des fichiers est **définitive** et ne peut pas être annulée automatiquement : pour reconnecter le même avatar comme bot, il faut le recréer et saisir à nouveau son mot de passe. En cas d'échec de l'arrêt systemd, les fichiers sont conservés ; en cas d'échec de leur effacement, un nettoyage manuel peut être nécessaire.
 
 **À vérifier sur robust-vm après installation du correctif** : le formulaire apparaît pour Jolie Candy mais pas pour BloodMoon AI ; annuler/refuser une mauvaise confirmation ne modifie rien ; supprimer un bot secondaire de test désactive son unité et le fait disparaître de la liste, sans déconnecter le bot principal. Ne pas supprimer Jolie Candy si tu souhaites encore la garder comme bot.
+
+## Notifications d'administration (23 novembre 2026)
+
+Les confirmations de succès (ajout, suppression, démarrage, arrêt, sauvegarde) sont affichées comme notifications à usage unique après la redirection HTTP 303, puis **s'effacent visuellement après 6 secondes** par animation CSS (sans recharger la page et sans refaire l'action). Les erreurs restent visibles pour permettre le diagnostic. L'état réel du service, la liste des avatars et les compteurs de ressources restent indépendants des notifications de succès.
