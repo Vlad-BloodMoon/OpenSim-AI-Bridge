@@ -243,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $settings = [
                     'enabled' => ($_POST['aiEnabled'] ?? '') === '1',
-                    'mode' => ($_POST['aiMode'] ?? '') === 'auto' ? 'auto' : 'single',
+                    'mode' => ($_POST['aiMode'] ?? 'auto') === 'single' ? 'single' : 'auto',
                     'profiles' => $profiles,
                     'maxRequestsPerHour' => $hourly,
                     'minSecondsBetweenRequests' => $cooldown,
@@ -775,8 +775,8 @@ foreach (['OpenRouter' => 'openrouter/free'] as $provider => $model) {
 <label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($multiSettings['enabled']) ? 'checked' : '' ?>> Autoriser la chaîne de moteurs globale (pour les avatars dont l’IA est activée)</label>
 <label for="ai-mode">Mode de fonctionnement</label>
 <select id="ai-mode" name="aiMode">
-<option value="single" <?= ($multiSettings['mode'] ?? 'single') === 'single' ? 'selected' : '' ?>>IA unique — premier moteur actif et testé</option>
-<option value="auto" <?= ($multiSettings['mode'] ?? '') === 'auto' ? 'selected' : '' ?>>Multi-IA — basculement automatique selon la priorité</option>
+<option value="single" <?= ($multiSettings['mode'] ?? 'auto') === 'single' ? 'selected' : '' ?>>IA unique — uniquement pour tester un moteur</option>
+<option value="auto" <?= ($multiSettings['mode'] ?? '') === 'auto' ? 'selected' : '' ?>>Multi-IA (par défaut) — basculement automatique selon la priorité</option>
 </select>
 </fieldset>
 <h3>Priorité et configuration des moteurs</h3>
