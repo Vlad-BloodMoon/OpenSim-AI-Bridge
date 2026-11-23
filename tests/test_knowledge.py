@@ -14,7 +14,7 @@ class KnowledgeTests(unittest.TestCase):
     def test_parse_and_search(self):
         html = ('<html><head><title>BloodMoon RP</title><script>SECRET</script></head>'
                 '<body><nav><a href="/roleplay/pages/guide.php?lang=fr">Guide RP</a>Administration privee</nav><main>'
-                '<h1>Vampires et malediction</h1><p>Les vampires perdent du liquide vital.</p>'
+                '<h1>Vampires et malediction</h1><p>Les vampires perdent du liquide vital chaque nuit. Le grimoire contient les règles de la malédiction BloodMoon.</p>'
                 '</main></body></html>')
         title, text, links = kb.parse_page(html)
         self.assertIn("/roleplay/pages/guide.php?lang=fr", links)
@@ -30,7 +30,7 @@ class KnowledgeTests(unittest.TestCase):
                 hits = kb.safe_search(db, "vampires malediction")
                 self.assertEqual(hits[0]["source"], "roleplay")
                 self.assertEqual(hits[0]["url"], "https://bloodmoonpack.com/")
-                self.assertEqual(kb.store(db, "roleplay", title, text)[0], "unchanged")
+                self.assertEqual(kb.store(db, "roleplay", kb.SOURCES["roleplay"], title, text)[0], "unchanged")
                 self.assertEqual(kb.safe_search(db, '"; DROP TABLE documents; --'), [])
                 self.assertEqual(db.execute("SELECT count(*) FROM knowledge_pages").fetchone()[0], 1)
             finally:
