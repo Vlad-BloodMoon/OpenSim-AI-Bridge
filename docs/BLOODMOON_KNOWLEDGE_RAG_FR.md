@@ -66,3 +66,24 @@ python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py search "va
 Tester d'abord `import --source grid`, puis `status` et `search "rejoindre grille"`. L'extraction réelle doit être contrôlée : sites générés en JavaScript, erreurs de redirection ou contenus vides peuvent nécessiter des exports structurés au lieu de HTML. L'outil ne prétend **pas** encore connaître toutes les pages, ni être utilisé automatiquement par les bots ; le branchement du moteur IM et les mises à jour automatiques seront des phases ultérieures.
 
 **Sécurité et sauvegarde :** base documentaire hors du répertoire Web, pas de secret dans l'index, éviter toute publication du fichier .db. Les données indexées sont publiques, mais peuvent contenir des résidus de navigation ; inspecter les résultats avant ouverture à l'IA. La base est partagée logiquement : elle sera consultée en lecture seule par les avatars lors de la phase suivante.
+
+## Phase 1 bis — découverte par menus et pages internes (23 novembre 2026)
+
+Retour réel de la première indexation : la seule page `/grid/` a produit quatre passages, avec de nombreuses coordonnées de régions. Une seule page d'accueil ne suffit pas. Le crawler v2 découvre donc les liens publics **depuis les menus de navigation**, y compris quand le texte du menu lui-même n'est pas indexé, et suit ces liens dans la même catégorie de source.
+
+- Grid : `/grid/` et pages internes publiques `/grid/...`; refuser les sections d'authentification, d'administration, d'édition, de compte et de données personnelles.
+- Roleplay : `/` et pages informatives `/roleplay/pages/...`; le guide officiel est `/roleplay/pages/guide.php?lang=...`. Le site principal présente des statistiques individuelles, qui ne doivent pas alimenter les réponses de référence.
+- Marketplace : pages publiques sous `/Marketplace/`, sans panier, commande, paiement ni comptes.
+- Handbook : pages publiques sous `/OpenSim_Handbook/`.
+
+Protection : mêmes domaine et HTTPS stricts, aucune URL arbitraire ni redirection, liens de menus filtrés par source, taille maximale 1,5 Mo par page, 80 pages par source par défaut (120 maximum), délai entre téléchargements et stockage séparé par URL canonique. Pas de PDF dans cette phase ; il faudra ajouter l'extraction des guides PDF ensuite. Les anciens index à une seule page restent dans les tables v1 mais la recherche v2 utilise seulement les nouvelles tables `knowledge_pages` / `knowledge_passages`. L'ancien index n'est pas supprimé.
+
+Commandes une fois la nouvelle version installée :
+
+```bash
+python3 knowledge/knowledge_cli.py import --source grid --max-pages 80
+python3 knowledge/knowledge_cli.py status
+python3 knowledge/knowledge_cli.py search "ajouter la grille Firestorm"
+```
+
+La synchronisation automatisée et l'intégration des recherches aux réponses IM ne sont pas encore en service.
