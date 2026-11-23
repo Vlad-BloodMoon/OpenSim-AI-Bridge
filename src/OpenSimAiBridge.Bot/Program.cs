@@ -23,7 +23,21 @@ if (args.Length == 1 && args[0] == "--verify-invariant-rate")
     return 0;
 }
 
-// Prototype V0.1: static IM commands only, no paid AI, no ROBUST connection.
+// Offline safety check: remote AI cannot be used without an explicit allowlist and key.
+if (args.Length == 1 && args[0] == "--verify-ai-safety")
+{
+    using var disabled = new RemoteAiResponder(new RemoteAiSettings { Enabled = false });
+    using var noUsers = new RemoteAiResponder(new RemoteAiSettings { Enabled = true });
+    if (disabled.Ready || noUsers.Ready || disabled.IsAuthorized(Guid.NewGuid()))
+    {
+        Console.Error.WriteLine("AI must be disabled without explicit authorization.");
+        return 1;
+    }
+    Console.WriteLine("Remote AI opt-in safety checks passed.");
+    return 0;
+}
+
+// Static free IM commands remain available even when remote AI is off.
 // Never place avatar passwords in configuration files or source code.
 var configPath = args.Length > 0 ? args[0] : "appsettings.json";
 if (!File.Exists(configPath))
