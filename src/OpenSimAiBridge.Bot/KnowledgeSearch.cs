@@ -22,16 +22,72 @@ public sealed class KnowledgeSearch
         return Path.Combine(home, DefaultRelativePath);
     }
 
-    // Use only individual tokens from the resident's message, not user-supplied FTS syntax.
+    // Ignore common conversational words, which otherwise make a welcome page
+    // rank above the actual documentation. Keep only search-bearing terms.
+    private static readonly HashSet<string> StopWords = new(StringComparer.Ordinal) {
+        "bonjour", "salut", "hello", "peux", "pouvez", "vous", "nous", "moi", "toi",
+        "expliquer", "explain", "comment", "fonctionne", "fonctionner", "works",
+        "quel", "quelle", "quels", "quelles", "avec", "dans", "pour", "sur",
+        "des", "les", "une", "the", "and", "how", "does", "what", "about",
+        "bloodmoon", "please", "merci", "est", "sont", "aux", "qui", "que",
+        "cette", "cela", "suis", "leur", "leurs", "faire", "fait", "tout",
+    };
+
+    private static readonly string[] CurseWords = { "malédiction", "malediction", "curse", "cursed" };
+    private static readonly string[] VampireWords = { "vampire", "vampires" };
+
+    private static string[] SearchTerms(string question)
+    {
+        var found = Regex.Matches(question.ToLowerInvariant(), @"[\p{L}\p{N}]{3,}")
+            .Select(m => m.Value)
+            .Where(t => !StopWords.Contains(t))
+            .Distinct(StringComparer.Ordinal)
+            .Take(6)
+            .ToList();
+        if (found.Any(x => CurseWords.Contains(x, StringComparer.Ordinal)))
+            found.AddRange(CurseWords);
+        if (found.Any(x => VampireWords.Contains(x, StringComparer.Ordinal)))
+            found.AddRange(VampireWords);
+        return found.Distinct(StringComparer.Ordinal).Take(12).ToArray();
+    }
+
+    // All tokens come from validated words. Never interpolate raw resident FTS syntax.
     public static string? MakeFtsExpression(string question)
     {
-        var tokens = Regex.Matches(question.ToLowerInvariant(), @"[\p{L}\p{N}]{3,}")
-            .Select(m => m.Value)
-            .Distinct(StringComparer.Ordinal)
-            .Take(8)
-            .Select(t => "\"" + t.Replace("\"", "\"\"") + "\"")
-            .ToArray();
-        return tokens.Length == 0 ? null : string.Join(" OR ", tokens);
+        var tokens = SearchTerms(question);
+        return tokens.Length == 0 ? null : string.Join(" OR ",
+            tokens.Select(t => "\"" + t.Replace("\"", "\"\"") + "\""));
+    }
+
+    private static bool ContainsAny(string text, IEnumerable<string> words) =>
+        words.Any(w => text.Contains(w, StringComparison.OrdinalIgnoreCase));
+
+    private static double Score(KnowledgeHit hit, IReadOnlyList<string> words, bool curseQuestion)
+    {
+        var title = hit.Title;
+        var url = hit.Url;
+        var body = hit.Excerpt;
+        var score = 0.0;
+        foreach (var word in words)
+        {
+            if (title.Contains(word, StringComparison.OrdinalIgnoreCase)) score += 35;
+            if (body.Contains(word, StringComparison.OrdinalIgnoreCase)) score += 3;
+        }
+        // A question about game rules needs the manual, not the dynamic homepage.
+        if (curseQuestion)
+        {
+            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase)) score += 70;
+            if (ContainsAny(title, CurseWords) || ContainsAny(url, new[] { "curse", "malediction", "malédiction" }))
+                score += 75;
+            if (url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) score += 30;
+            if (url.Contains("/roleplay/pages/guide.php", StringComparison.OrdinalIgnoreCase)) score -= 85;
+            if (url.Contains("/?lang=", StringComparison.OrdinalIgnoreCase)) score -= 90;
+            // French-language residents should receive a French guide if available,
+            // rather than an English PDF with imperfect text extraction.
+            if (ContainsAny(url, new[] { "_fr.pdf", "/fr/", "-fr.pdf", "francais", "french" })) score += 30;
+            if (ContainsAny(url, new[] { "_gb.pdf", "_en.pdf" })) score -= 10;
+        }
+        return score;
     }
 
     public IReadOnlyList<KnowledgeHit> Search(string question, int limit = 3)
@@ -39,6 +95,8 @@ public sealed class KnowledgeSearch
         var expression = MakeFtsExpression(question);
         if (expression is null || !File.Exists(path))
             return Array.Empty<KnowledgeHit>();
+        var terms = SearchTerms(question);
+        var curseQuestion = terms.Any(x => CurseWords.Contains(x, StringComparer.Ordinal));
         limit = Math.Clamp(limit, 1, 4);
         try
         {
@@ -57,28 +115,36 @@ public sealed class KnowledgeSearch
                 SELECT url, title, substr(body,1,1100), source
                 FROM knowledge_passages
                 WHERE knowledge_passages MATCH $query
-                ORDER BY bm25(knowledge_passages)
-                LIMIT $limit
+                ORDER BY bm25(knowledge_passages, 0.0, 0.0, 6.0, 1.0)
+                LIMIT 100
                 """;
             command.Parameters.AddWithValue("$query", expression);
-            command.Parameters.AddWithValue("$limit", limit);
             using var rows = command.ExecuteReader();
-            var hits = new List<KnowledgeHit>();
+            var candidates = new List<KnowledgeHit>();
             while (rows.Read())
             {
                 var url = rows.GetString(0);
-                // Never treat local documents as instructions. Limit to exact public source domain.
                 if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)
                     || parsed.Scheme != Uri.UriSchemeHttps
                     || !string.Equals(parsed.Host, "bloodmoonpack.com", StringComparison.OrdinalIgnoreCase))
                     continue;
-                hits.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), rows.GetString(3)));
+                candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), rows.GetString(3)));
             }
-            return hits;
+            // Re-rank over a wider pool and deduplicate URLs, so one noisy page
+            // cannot occupy all three context slots. Preserve order for ties.
+            return candidates.Select((hit, index) => new {
+                    Hit = hit,
+                    Index = index,
+                    Rank = Score(hit, terms, curseQuestion)
+                })
+                .OrderByDescending(x => x.Rank).ThenBy(x => x.Index)
+                .GroupBy(x => x.Hit.Url, StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.First().Hit)
+                .Take(limit)
+                .ToArray();
         }
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or ArgumentException)
         {
-            // Retrieval failure must not break IM or reveal private server paths.
             return Array.Empty<KnowledgeHit>();
         }
     }
