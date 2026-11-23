@@ -38,7 +38,7 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 
 ## V0.2 follow-up — Appearance and multiple avatars
 - [x] CoreJ2K `rate: 2.8125` initial live retest **passed** on BloodMoon (2026-11-23 10:36): invariant-culture guard compiled and no corresponding exception in filtered startup logs. Monitor subsequent reconnects; full long-term validation pending.
-- [ ] Support multiple **independent** bot accounts (e.g. BloodMoon AI, optionally Jolie Candy) without duplicate viewer sessions.
+- [ ] Independent bot accounts: **Web registration, per-avatar configuration, independent systemd instances and secret files implemented in GitHub**; actual second-avatar login and isolation testing pending.
 - [ ] Each bot has its own encrypted/protected credentials, startup region and XYZ, heartbeat/presence, IM and reconnect settings, logs, service lifecycle, Firestorm lock and service identity.
 - [ ] Web admin lists bots, selects one to edit, and independently starts/stops/restarts or puts that account in Firestorm maintenance.
 - [ ] Do not expose avatar passwords through the Web app; avoid global locks, shared status files and broad shell/systemd permissions.
