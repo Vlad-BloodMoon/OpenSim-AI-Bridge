@@ -22,15 +22,24 @@ Modifier **le fichier privé** `appsettings.json` (ignoré par Git) :
 - `Grid.StartLocation.RegionName` : par défaut `BloodMoon_TEST` dans l'exemple pilote.
 - `Grid.StartLocation.Position` : X, Y, Z du point de départ.
 
-Le mot de passe **n'est pas** stocké dans le JSON :
+Le mot de passe **n'est pas** stocké dans le JSON. Un modèle `bot-password.example.txt` se trouve **à la racine du dépôt**, au même niveau que le programme publié. Sur le serveur, créer le fichier privé `bot-password.txt` à ce même emplacement (avec **une seule ligne contenant le mot de passe**) :
 
 ```bash
-read -rsp 'Mot de passe avatar : ' OSAI_AVATAR_PASSWORD
-echo
+cp bot-password.example.txt bot-password.txt
+chmod 600 bot-password.txt
+nano bot-password.txt
+```
+
+**Important :** le nom `bot-password.txt` est exclu par `.gitignore`, mais ne doit jamais être publié ou transféré avec un mot de passe réel. Ne pas transmettre la valeur dans le chat, un ticket GitHub ou une capture d'écran.
+
+La V0.1 lit toujours le secret depuis une variable d'environnement. Pour charger la valeur depuis le fichier **dans le même terminal que le lancement**, sans l'afficher :
+
+```bash
+read -r OSAI_AVATAR_PASSWORD < bot-password.txt
 export OSAI_AVATAR_PASSWORD
 ```
 
-Ne pas transmettre la valeur dans le chat, un ticket GitHub ou une capture d'écran. Une méthode de stockage des secrets plus durable sera documentée pour le service ultérieur.
+Le futur service systemd utilisera ce fichier protégé automatiquement, sans commande manuelle.
 
 ## Compiler et essayer (après validation de la configuration)
 
@@ -51,4 +60,4 @@ Arrêt : `Ctrl+C`.
 - Les IM de test sont limités aux commandes exactes.
 - Le prototype ne fournit encore ni interface Web, ni lecture ROBUST, ni OpenAI, ni traduction.
 - Si le login échoue, conserver les messages d'erreur **sans mot de passe ni secrets**, puis analyser ensemble.
-- Aucun test de compilation réel n'a pu être exécuté dans l'environnement de rédaction ; valider `dotnet build` avant tout lancement sur BloodMoon.
+- Compilation GitHub Actions réussie et premiers tests IM validés sur BloodMoon le 20 novembre 2026 : voir [compte rendu](TESTS_2026-11-20_FR.md). Les tests de reconnexion, d'apparence et de stabilité longue durée restent à faire.
