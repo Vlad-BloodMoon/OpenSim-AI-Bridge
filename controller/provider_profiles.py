@@ -12,7 +12,7 @@ from pathlib import Path
 PROVIDERS = {
     "Groq": {"default": "openai/gpt-oss-20b", "keyenv": "OSAI_GROQ_API_KEY"},
     "OpenRouter": {"default": "openrouter/free", "keyenv": "OSAI_OPENROUTER_API_KEY"},
-    "Gemini": {"default": "gemini-2.5-flash-lite", "keyenv": "OSAI_GEMINI_API_KEY"},
+    "Gemini": {"default": "gemini-3-flash-preview", "keyenv": "OSAI_GEMINI_API_KEY"},
     "OpenAI": {"default": "gpt-4.1-mini", "keyenv": "OSAI_OPENAI_API_KEY"},
 }
 PROVIDER_KEYS = {"Groq": "groq", "OpenRouter": "openrouter", "Gemini": "gemini", "OpenAI": "openai"}
@@ -32,7 +32,7 @@ def public_eligible(provider, model):
     # Zero-cost default must be fail-closed. OpenRouter :free is a candidate
     # but still requires administrator approval; provider billing needs checking.
     return provider == "Groq" or (provider == "OpenRouter" and model.endswith(":free")) or (
-        provider == "OpenRouter" and model == "openrouter/free") or (provider == "Gemini" and model in ("gemini-2.5-flash-lite", "gemini-2.5-flash"))
+        provider == "OpenRouter" and model == "openrouter/free") or (provider == "Gemini" and model in ("gemini-3-flash-preview",))
 
 
 def normalize(values):
