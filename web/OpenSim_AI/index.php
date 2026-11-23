@@ -315,6 +315,7 @@ $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_sett
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
 $kbResponse = $authenticated && $page === 'knowledge' ? request_control('knowledge_status') : null;
 $kb = is_array($kbResponse['result'] ?? null) ? $kbResponse['result'] : null;
+$kbRunning = in_array(($kb['service'] ?? ''), ['active', 'activating', 'reloading'], true);
 $selectedName = 'Avatar';
 foreach ($bots as $bot) {
     if (($bot['id'] ?? '') === $selectedBot) {
@@ -646,7 +647,7 @@ textarea{resize:vertical}
 <?php if ($kb === null): ?>
 <div class="notice error">État documentaire indisponible : contrôleur à mettre à jour.</div>
 <?php else: ?>
-<p><strong>Synchronisation :</strong> <?= esc(($kb['service'] ?? '') === 'active' ? 'En cours' : 'À l’arrêt') ?></p>
+<p><strong>Synchronisation :</strong> <?= esc($kbRunning ? 'Indexation en cours' : 'À l’arrêt') ?></p>
 <p><strong>Fichier SQLite :</strong> <?= !empty($kb['database']) ? 'Présent' : 'Pas encore créé' ?></p>
 <table style="width:100%;text-align:left;border-spacing:0 .6rem">
 <thead><tr><th>Source</th><th>Pages / PDF</th><th>Passages</th></tr></thead>
@@ -661,7 +662,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <input type="hidden" name="page" value="knowledge">
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
-<button name="action" value="knowledge_refresh" <?= ($kb['service'] ?? '') === 'active' ? 'disabled' : '' ?>>Actualiser l'indexation des quatre sites</button>
+<button name="action" value="knowledge_refresh" <?= $kbRunning ? 'disabled' : '' ?>><?= $kbRunning ? 'Indexation en cours…' : 'Actualiser l\'indexation des quatre sites' ?></button>
 </form>
 <p class="muted">La synchronisation s'exécute indépendamment des avatars IA. Actualise cette page pour consulter les compteurs. Seules les ressources publiques autorisées sont indexées.</p>
 <?php endif ?>
