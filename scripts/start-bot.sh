@@ -50,6 +50,42 @@ if [[ -f "$AI_KEY_FILE" ]]; then
   export OSAI_AI_API_KEY
 fi
 
+# Separate provider credentials, never printed or committed.
+load_provider_key() {
+  local provider="$1" variable="$2"
+  local path
+  path="$(dirname -- "$CONFIG_FILE")/ai-keys/$provider.txt"
+  [[ -f "$path" ]] || return 0
+  if [[ -L "$path" || ! -r "$path" ]]; then
+    echo "Invalid provider credential file." >&2
+    exit 2
+  fi
+  local mode
+  mode="$(stat -c '%a' -- "$path")"
+  if (( (8#$mode & 077) != 0 )); then
+    echo "Provider API key must have private permissions." >&2
+    exit 2
+  fi
+  local value=''
+  IFS= read -r value < "$path" || [[ -n "$value" ]]
+  [[ -n "$value" ]] || return 0
+  printf -v "$variable" '%s' "$value"
+  export "$variable"
+}
+
+# Legacy credential remains untouched and available to its original provider.
+if [[ -n "${OSAI_AI_API_KEY:-}" ]]; then
+  legacy_provider="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("Ai",{}).get("Provider",""))' "$CONFIG_FILE")"
+  case "$legacy_provider" in
+    Groq) export OSAI_GROQ_API_KEY="$OSAI_AI_API_KEY" ;;
+    OpenRouter) export OSAI_OPENROUTER_API_KEY="$OSAI_AI_API_KEY" ;;
+    OpenAI) export OSAI_OPENAI_API_KEY="$OSAI_AI_API_KEY" ;;
+  esac
+fi
+load_provider_key groq OSAI_GROQ_API_KEY
+load_provider_key openrouter OSAI_OPENROUTER_API_KEY
+load_provider_key openai OSAI_OPENAI_API_KEY
+
 # The maintenance check is repeated immediately before launch.
 if [[ -e "$LOCK_FILE" ]]; then
   echo "OpenSim AI Bridge: maintenance activated; refusing to connect."
