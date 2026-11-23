@@ -95,6 +95,12 @@ if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity']
 $authenticated = ($_SESSION['admin'] ?? false) === true;
 $message = '';
 $error = '';
+// One-use notices: a command acknowledgement must never be mistaken for live state.
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    $message = is_string($_SESSION['flash_message'] ?? null) ? $_SESSION['flash_message'] : '';
+    $error = is_string($_SESSION['flash_error'] ?? null) ? $_SESSION['flash_error'] : '';
+    unset($_SESSION['flash_message'], $_SESSION['flash_error']);
+}
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!check_csrf()) {
@@ -215,6 +221,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 }
+// Post / Redirect / Get: refresh and navigation never resubmit passwords or bot commands.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $authenticated) {
+    if ($message !== '') $_SESSION['flash_message'] = $message;
+    if ($error !== '') $_SESSION['flash_error'] = $error;
+    if (($_POST['action'] ?? '') === 'create_bot' && $error === '') {
+        $page = 'dashboard';
+    }
+    header('Location: ./?page=' . rawurlencode($page) . '&bot=' . rawurlencode($selectedBot), true, 303);
+    exit;
+}
 if ($authenticated) {
     $_SESSION['last_activity'] = $now;
 }
@@ -241,6 +257,10 @@ foreach ($bots as $bot) {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow,noarchive">
 <title>BloodMoon AI — Administration</title>
+<?php if ($authenticated && $page === 'dashboard'): ?>
+<!-- Refresh only the read-only dashboard. Never reload an open settings or creation form. -->
+<meta http-equiv="refresh" content="10">
+<?php endif ?>
 <style>
 :root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,sans-serif}
 *{box-sizing:border-box}
@@ -403,6 +423,7 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </section>
 <section class="panel">
 <h2>Présence et position de l'avatar</h2>
+<p class="muted">État réel de la grille · actualisation automatique toutes les 10 secondes.</p>
 <?php $avatar = is_array($state['avatar'] ?? null) ? $state['avatar'] : null; ?>
 <?php if ($avatar !== null && ($avatar['connected'] ?? false) === true && is_array($avatar['position'] ?? null)): ?>
 <div class="grid">
