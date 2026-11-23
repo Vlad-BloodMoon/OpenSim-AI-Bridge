@@ -28,6 +28,7 @@
 - [Roadmap](docs/ROADMAP.md)
 - [Security policy](SECURITY.md)
 - [Example configuration](config/appsettings.example.json)
+- [Avatar password file template / Modèle de fichier mot de passe](bot-password.example.txt) — never commit the real `bot-password.txt`
 
 ## First experimental client / Premier client expérimental
 
