@@ -10,7 +10,7 @@
 - Le service du nouvel avatar est activé au reboot et démarré immédiatement avec `systemctl enable --now`. Si le compte n'existe pas sur ROBUST, ou si le mot de passe est incorrect, le service pourra tourner et retenter la connexion sans être authentifié ; consulter son statut et ses logs sans jamais partager ses secrets.
 - **Ne jamais connecter simultanément un même compte dans Firestorm et comme bot.** Le mode Firestorm est indépendant par compte.
 - Les fonctions `list_bots`, `create_bot` et les commandes existantes, maintenant adressées via `botId`, passent par le socket UNIX privé et exigent l'authentification Web actuelle. Le mot de passe est transmis uniquement lors de la création vers le contrôleur local et jamais renvoyé par les actions de lecture.
-- La version preview ne sait pas encore supprimer ni renommer un compte bot. Ces actions seront ajoutées avec protection contre les suppressions accidentelles.
+- La version preview sait désormais supprimer un bot secondaire depuis « Mes avatars », après confirmation explicite de son nom. Renommer ou restaurer un bot supprimé reste à développer.
 
 ## Installation sur robust-vm — ne pas tout faire d'un coup
 
@@ -90,3 +90,19 @@ Dans **Tableau de bord → État du service**, chaque avatar sélectionné affic
 - L'écran conserve son actualisation automatique toutes les 10 secondes.
 
 **Déploiement :** mettre à jour `controller/control.py` par le script d'installation multi-bots et le fichier Web PHP depuis le même artefact. Le script active `CPUAccounting=yes` et `MemoryAccounting=yes` pour les unités d'avatar à instances ainsi que via un drop-in pour l'ancienne unité BloodMoon AI. L'installation recharge systemd, **sans redémarrer les avatars existants**. Certaines valeurs peuvent rester indisponibles tant que les unités actives n'ont pas été redémarrées individuellement. Aucun redémarrage systématique n'est requis pour déployer la page Web.
+
+## Suppression d'un bot secondaire — 23 novembre 2026
+
+Dans **Mes avatars**, chaque avatar secondaire possède un panneau « Supprimer ce bot » ; le compte principal BloodMoon AI est protégé et n'affiche aucun bouton de suppression. L'admin doit saisir **exactement** le prénom et le nom de l'avatar puis cocher la confirmation. Le contrôleur authentifié exige également le nom et la confirmation : un appel direct ne peut contourner l'interface.
+
+La suppression agit **uniquement sur OpenSim AI Bridge** : le compte ROBUST/OpenSimulator de l'avatar reste intact, de même que les autres bots et le programme .NET partagé. Le contrôleur :
+
+1. Refuse les IDs inconnus ou l'ID principal `main`, et toute suppression pendant la maintenance générale.
+2. Vérifie l'identité exacte de l'avatar dans son fichier de configuration privé.
+3. Exécute `systemctl disable --now opensim-ai-bridge@<id>.service` puis vérifie que le service est arrêté avant toute destruction de données.
+4. Retire seulement `/var/lib/opensim-ai-bridge/bots/<id>/` (configuration, secret, heartbeat), via un renommage dans le même répertoire avant effacement. Les services des autres avatars ne sont pas modifiés.
+5. Revient à la sélection du bot principal après une suppression réussie.
+
+La suppression des fichiers est **définitive** et ne peut pas être annulée automatiquement : pour reconnecter le même avatar comme bot, il faut le recréer et saisir à nouveau son mot de passe. En cas d'échec de l'arrêt systemd, les fichiers sont conservés ; en cas d'échec de leur effacement, un nettoyage manuel peut être nécessaire.
+
+**À vérifier sur robust-vm après installation du correctif** : le formulaire apparaît pour Jolie Candy mais pas pour BloodMoon AI ; annuler/refuser une mauvaise confirmation ne modifie rien ; supprimer un bot secondaire de test désactive son unité et le fait disparaître de la liste, sans déconnecter le bot principal. Ne pas supprimer Jolie Candy si tu souhaites encore la garder comme bot.
