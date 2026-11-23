@@ -40,10 +40,12 @@ public sealed class RemoteAiResponder : IDisposable
     private DateTimeOffset hourStart = DateTimeOffset.UtcNow;
     private int usedThisHour;
     private readonly Uri? endpoint;
+    private readonly KnowledgeSearch knowledge;
 
     public RemoteAiResponder(RemoteAiSettings settings)
     {
         this.settings = settings;
+        knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
         apiKey = Environment.GetEnvironmentVariable(settings.ApiKeyEnv);
         if (Endpoints.TryGetValue(settings.Provider, out string? url))
@@ -89,15 +91,22 @@ public sealed class RemoteAiResponder : IDisposable
                 usedThisHour++;
             }
 
+            // The same shared index is available to Groq, OpenAI and OpenRouter.
+            // No retrieved passage ever bypasses the existing IM permission and rate limits.
+            var hits = knowledge.Search(prompt);
+            var context = KnowledgeSearch.BuildContext(hits);
+            var userContent = string.IsNullOrEmpty(context)
+                ? prompt
+                : $"Question du résident : {prompt}\n\n{context}";
             var payload = new
             {
                 model = settings.Model,
                 messages = new[]
                 {
                     new { role = "system", content = settings.SystemPrompt },
-                    new { role = "user", content = prompt }
+                    new { role = "user", content = userContent }
                 },
-                max_tokens = 250,
+                max_tokens = 400,
                 temperature = 0.5
             };
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
