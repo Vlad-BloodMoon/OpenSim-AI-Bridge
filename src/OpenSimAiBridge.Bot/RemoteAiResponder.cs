@@ -217,12 +217,17 @@ public sealed class RemoteAiResponder : IDisposable
 
                 try
                 {
-                    var payload = new { model = profile.Model, messages,
-                                        max_tokens = 900, temperature = 0.4 };
-                    using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
-                    request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8,
-                                                        "application/json");
+                    var gemini = profile.Provider == "Gemini";
+                    var destination = gemini ? GeminiNative.Endpoint(profile.Model) : endpoint;
+                    using var request = new HttpRequestMessage(HttpMethod.Post, destination);
+                    if (gemini)
+                        request.Headers.TryAddWithoutValidation("x-goog-api-key", key);
+                    else
+                        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+                    var json = gemini ? GeminiNative.Payload(messages) :
+                        JsonSerializer.Serialize(new { model = profile.Model, messages,
+                                                       max_tokens = 900, temperature = 0.4 });
+                    request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                     using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
                     if (response.StatusCode == HttpStatusCode.TooManyRequests ||
                         response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout ||
@@ -245,8 +250,9 @@ public sealed class RemoteAiResponder : IDisposable
                     }
                     using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
                     using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
-                    var reply = doc.RootElement.GetProperty("choices")[0]
-                        .GetProperty("message").GetProperty("content").GetString()?.Trim();
+                    var reply = gemini ? GeminiNative.ReadText(doc.RootElement) :
+                        doc.RootElement.GetProperty("choices")[0]
+                            .GetProperty("message").GetProperty("content").GetString()?.Trim();
                     if (string.IsNullOrEmpty(reply))
                     {
                         switched = true;
