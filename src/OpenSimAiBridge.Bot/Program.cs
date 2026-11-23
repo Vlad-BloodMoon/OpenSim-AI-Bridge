@@ -166,6 +166,40 @@ if (args.Length == 1 && args[0] == "--verify-im-chunks")
     return 0;
 }
 
+// Offline test: multiple distinct residents can speak in parallel; one
+// resident cannot occupy two slots, and the fifth distinct resident is bounded.
+if (args.Length == 1 && args[0] == "--verify-ai-concurrency")
+{
+    using var gate = new AiRequestGate();
+    var ids = Enumerable.Range(0, 5).Select(_ => Guid.NewGuid()).ToArray();
+    var leases = new List<IDisposable>();
+    try
+    {
+        for (var i = 0; i < 4; ++i)
+        {
+            if (!gate.TryAcquire(ids[i], out var lease, out var duplicate) ||
+                duplicate || lease is null)
+                throw new InvalidOperationException("Four distinct residents should be admitted.");
+            leases.Add(lease);
+        }
+        if (gate.TryAcquire(ids[0], out _, out var alreadyActive) || !alreadyActive)
+            throw new InvalidOperationException("Duplicate resident request must be rejected.");
+        if (gate.TryAcquire(ids[4], out _, out var anotherDuplicate) || anotherDuplicate)
+            throw new InvalidOperationException("Fifth parallel resident must be safely limited.");
+        leases[0].Dispose();
+        if (!gate.TryAcquire(ids[4], out var fifthLease, out var sameSender) ||
+            sameSender || fifthLease is null)
+            throw new InvalidOperationException("Released slot should serve another resident.");
+        leases.Add(fifthLease);
+        Console.WriteLine("Parallel resident AI request admission checks passed.");
+        return 0;
+    }
+    finally
+    {
+        foreach (var lease in leases) lease.Dispose();
+    }
+}
+
 // Static free IM commands remain available even when remote AI is off.
 // Never place avatar passwords in configuration files or source code.
 var configPath = args.Length > 0 ? args[0] : "appsettings.json";
