@@ -36,6 +36,7 @@
 - [Installation FR and first test](docs/INSTALLATION_V01_FR.md)
 - [Verified BloodMoon V0.1 tests / Compte rendu des tests](docs/TESTS_2026-11-20_FR.md)
 - [Web administration V0.2 design / Conception administration Web](docs/WEB_ADMIN_V02_FR.md)
+- [Systemd and Firestorm-mode setup / Service et mode Firestorm](docs/SERVICE_SYSTEMD_V02_FR.md)
 
 This prototype has **no AI, Web dashboard, database adapter or translation yet**. It has passed first BloodMoon grid tests but is **not production-ready**; stop/restart control and safe Firestorm handoff are V0.2 priorities.
 
