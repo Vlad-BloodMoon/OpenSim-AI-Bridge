@@ -49,9 +49,9 @@ public sealed class RemoteAiResponder : IDisposable
     private readonly HashSet<Guid> authorized;
     private readonly ConcurrentDictionary<Guid, DateTimeOffset> lastUserRequest = new();
     private readonly ConcurrentDictionary<Guid, (DateTimeOffset timestamp, List<(string question, string answer)> turns)> memory = new();
-    private readonly Dictionary<string, DateTimeOffset> unavailableUntil = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, DateTimeOffset> unavailableUntil = new(StringComparer.Ordinal);
     private readonly object sync = new();
-    private readonly SemaphoreSlim concurrency = new(1, 1);
+    private readonly AiRequestGate requestGate = new();
     private readonly KnowledgeSearch knowledge;
     private readonly SharedProviderQuota sharedQuota;
     private DateTimeOffset hourStart = DateTimeOffset.UtcNow;
@@ -149,9 +149,11 @@ public sealed class RemoteAiResponder : IDisposable
     {
         if (!IsAuthorized(sender) || string.IsNullOrWhiteSpace(prompt)) return null;
         if (prompt.Length > 1000) return "Ton message est trop long (maximum 1000 caractères).";
-        if (!await concurrency.WaitAsync(0, cancellationToken).ConfigureAwait(false))
-            return "Je traite déjà une demande. Réessaie dans quelques instants.";
-        try
+        if (!requestGate.TryAcquire(sender, out var lease, out var sameSender))
+            return sameSender
+                ? "Je traite déjà ta question. Attends ma réponse avant d'en envoyer une autre."
+                : "Plusieurs résidents me parlent déjà. Réessaie dans quelques instants.";
+        using (lease)
         {
             var now = DateTimeOffset.UtcNow;
             lock (sync)
@@ -273,12 +275,11 @@ public sealed class RemoteAiResponder : IDisposable
             }
             return "Les moteurs IA configurés sont temporairement indisponibles. Réessaie plus tard.";
         }
-        finally { concurrency.Release(); }
     }
 
     public void Dispose()
     {
-        concurrency.Dispose();
+        requestGate.Dispose();
         client.Dispose();
     }
 }
