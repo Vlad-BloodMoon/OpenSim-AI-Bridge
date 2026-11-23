@@ -11,6 +11,7 @@ on:
       - 'controller/**'
       - 'web/**'
       - 'tests/**'
+      - 'knowledge/**'
       - 'docs/MULTI_BOT_V02_FR.md'
   pull_request:
     paths:
@@ -38,7 +39,7 @@ jobs:
       - name: Validate control scripts and web dashboard
         run: |
           bash -n scripts/*.sh
-          python3 -m py_compile controller/control.py controller/multi_bot.py
+          python3 -m py_compile controller/control.py controller/multi_bot.py knowledge/knowledge_cli.py
           python3 -m unittest discover -s tests -v
           php -l web/OpenSim_AI/index.php
 
@@ -74,6 +75,8 @@ jobs:
           cp scripts/*.sh dist/linux-x64/scripts/
           chmod +x dist/linux-x64/scripts/*.sh
           cp deploy/systemd/*.example dist/linux-x64/deploy/systemd/
+          mkdir -p dist/linux-x64/knowledge
+          cp knowledge/knowledge_cli.py dist/linux-x64/knowledge/
           mkdir -p dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI
           cp controller/control.py controller/multi_bot.py dist/linux-x64/controller/
           cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
