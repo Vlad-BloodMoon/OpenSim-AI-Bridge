@@ -174,6 +174,31 @@ Console.CancelKeyPress += (_, e) =>
     stop.Cancel();
 };
 
+// Every avatar uses the same root-owned provider configuration and secrets.
+// The per-avatar Ai.Enabled flag alone controls access for that avatar.
+var sharedProviderConfig = Path.Combine(
+    Environment.GetEnvironmentVariable("OSAI_INSTALL_DIR") ?? AppContext.BaseDirectory,
+    "config", "multi-ai.json");
+if (File.Exists(sharedProviderConfig))
+{
+    try
+    {
+        var globalAi = JsonSerializer.Deserialize<RemoteAiSettings>(
+            await File.ReadAllTextAsync(sharedProviderConfig),
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        if (globalAi?.Profiles is { Count: > 0 })
+        {
+            globalAi.Enabled = options.Ai.Enabled && globalAi.Enabled;
+            options.Ai = globalAi;
+        }
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+    {
+        Console.Error.WriteLine("Shared provider configuration could not be loaded; remote AI disabled.");
+        options.Ai.Enabled = false; // Fail closed: never fall back to a paid legacy provider.
+    }
+}
+
 using var ai = new RemoteAiResponder(options.Ai);
 Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for configured IM access" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
