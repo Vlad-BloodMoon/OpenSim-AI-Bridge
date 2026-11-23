@@ -7,6 +7,7 @@ The process does not accept shell commands, paths or unit names from clients.
 import argparse
 import json
 import os
+import stat
 from pathlib import Path
 import pwd
 import socket
@@ -17,8 +18,8 @@ import tempfile
 import time
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume"))
-MAX_REQUEST = 2048
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings"))
+MAX_REQUEST = 4096
 
 
 class ControlError(Exception):
@@ -94,10 +95,85 @@ def avatar_presence(install):
         return {"connected": False, "state": "unavailable"}
 
 
-def execute(command, lock, confirm, install):
+
+def config_file(install):
+    path = install / "appsettings.json"
+    metadata = path.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 131072 or (metadata.st_mode & 0o022):
+        raise ControlError("Configuration file has unsafe permissions or size")
+    return path, metadata
+
+
+def read_settings(install):
+    try:
+        path, _ = config_file(install)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        grid = data.get("Grid", {})
+        location = grid.get("StartLocation", {})
+        pos = location.get("Position", {})
+        bot = data.get("Bot", {})
+        return {
+            "region": str(location.get("RegionName", "")),
+            "x": pos.get("X", 128), "y": pos.get("Y", 128), "z": pos.get("Z", 25),
+            "enableIM": bot.get("EnableIM", True),
+            "enableLocalChat": bot.get("EnableLocalChat", True),
+            "reconnectEnabled": bot.get("ReconnectEnabled", True),
+        }
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        raise ControlError("Unable to read bot settings") from exc
+
+
+def save_settings(install, values):
+    if not isinstance(values, dict) or set(values) != {"region", "x", "y", "z", "enableIM", "enableLocalChat", "reconnectEnabled"}:
+        raise ControlError("Invalid settings fields")
+    region = values.get("region")
+    if not isinstance(region, str) or not 1 <= len(region.strip()) <= 80 or any(ord(c) < 32 for c in region):
+        raise ControlError("Invalid region name")
+    for key, low, high in (("x", 0, 256), ("y", 0, 256), ("z", 0, 4096)):
+        if type(values[key]) is not int or not low <= values[key] <= high:
+            raise ControlError(f"Invalid {key} position")
+    for key in ("enableIM", "enableLocalChat", "reconnectEnabled"):
+        if type(values[key]) is not bool:
+            raise ControlError(f"Invalid {key} flag")
+    try:
+        path, metadata = config_file(install)
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("Grid"), dict):
+            raise ControlError("Invalid original configuration")
+        grid = data["Grid"]
+        location = grid.setdefault("StartLocation", {})
+        location["RegionName"] = region.strip()
+        location["Position"] = {"X": values["x"], "Y": values["y"], "Z": values["z"]}
+        bot = data.setdefault("Bot", {})
+        bot["EnableIM"] = values["enableIM"]
+        bot["EnableLocalChat"] = values["enableLocalChat"]
+        bot["ReconnectEnabled"] = values["reconnectEnabled"]
+        fd, temp = tempfile.mkstemp(prefix=".appsettings-", dir=str(install))
+        try:
+            os.fchmod(fd, stat.S_IMODE(metadata.st_mode))
+            os.fchown(fd, metadata.st_uid, metadata.st_gid)
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                json.dump(data, file, ensure_ascii=False, indent=2)
+                file.write("\\n")
+                file.flush()
+                os.fsync(file.fileno())
+            os.replace(temp, path)
+        finally:
+            if os.path.exists(temp):
+                os.unlink(temp)
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        raise ControlError("Failed to save bot settings") from exc
+    return {"saved": True, "restartRequired": True}
+
+
+def execute(command, lock, confirm, install, settings=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "get_settings":
+        return read_settings(install)
+    if command == "save_settings":
+        return save_settings(install, settings)
     if command == "status":
         return {**service_state(), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
 
@@ -140,9 +216,9 @@ def handle(client, allowed_uid, lock, install):
         return {"ok": False, "error": "Malformed request"}
     try:
         msg = json.loads(buf.split(b"\n", 1)[0])
-        if not isinstance(msg, dict) or set(msg) - {"action", "confirm"}:
+        if not isinstance(msg, dict) or set(msg) - {"action", "confirm", "settings"}:
             raise ControlError("Invalid request")
-        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install)
+        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install, msg.get("settings"))
         return {"ok": True, "result": result}
     except (ValueError, TypeError, ControlError) as exc:
         return {"ok": False, "error": str(exc)}
