@@ -1,18 +1,22 @@
 # Roadmap / Feuille de route
 
-All milestones are **planned**, not released.
+V0.1 was built and passed first grid/IM tests on 20 November 2026; other milestones remain **planned**. See [test report](TESTS_2026-11-20_FR.md).
 
 ## V0.1 — Real avatar / Avatar réel
-- [ ] Verify LibreMetaverse compatibility with OpenSimulator 0.9.3.1.
-- [ ] Implement configurable account login in .NET 8 without a viewer.
-- [ ] Report status, region and actual avatar coordinates.
-- [ ] Receive/reply to local chat and IM with static test responses.
+- [x] Verify basic login + IM compatibility with OpenSimulator 0.9.3.1 (limited test; not a full compatibility guarantee).
+- [x] Implement configurable account login in .NET 8 without a viewer.
+- [x] Report region and coordinates to console/IM (Web API reporting pending).
+- [x] Receive/reply to **IM** with static test responses; local chat reception coded but **not tested**.
 - [ ] Handle disconnection, reconnection, spam and message length.
-- [ ] Test on an isolated region before use at the BloodMoon welcome area.
+- [x] Test on BloodMoon_TEST before use at the BloodMoon welcome area.
 
 **Acceptance:** from Firestorm, an administrator sees the avatar and completes an IM round-trip without running any graphic viewer.
 
-## V0.2 — Web admin & free responses
+## V0.2 — Web admin & free responses (immediate priority)
+- [ ] Run bot as separate non-root systemd service with restricted privileges and supervised startup.
+- [ ] Authenticated Web controls: start, stop, restart, status/position/logs.
+- [ ] Persistent **Firestorm maintenance mode**: inhibit autoreconnect across process/server restarts until explicit admin release.
+- [ ] Distinguish intentional shutdown from network failure; prevent session battles with Firestorm.
 - [ ] Secure web login, roles and API.
 - [ ] Dashboard for bot status/location, technical logs and controls.
 - [ ] Persistent FAQ CRUD, categories, variants, multilingual entries and safe template variables.
