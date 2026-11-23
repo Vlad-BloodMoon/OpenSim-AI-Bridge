@@ -12,6 +12,8 @@ from pathlib import Path
 import pwd
 import re
 import uuid
+import urllib.request
+import urllib.error
 import socket
 import sqlite3
 import struct
@@ -23,7 +25,7 @@ import multi_bot
 import provider_profiles
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "get_multi_ai_settings", "save_multi_ai_settings"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -253,10 +255,18 @@ def read_multi_ai_settings(install):
 
 
 def save_multi_ai_settings(install, values):
+    # The browser cannot mark a model as tested. Only the controller can.
+    # Preserve the approval when provider, model and key remain unchanged.
     try:
+        previous = {p["id"]: p for p in read_multi_ai_settings(install)["profiles"]}
+        for item in values["profiles"]:
+            old = previous.get(item["id"])
+            item["verified"] = bool(old and old["provider"] == item["provider"]
+                                    and old["model"] == item["model"]
+                                    and old["verified"] and not item["apiKey"])
         ai = provider_profiles.normalize(values)
-    except provider_profiles.ProfileError as exc:
-        raise ControlError(str(exc)) from exc
+    except (provider_profiles.ProfileError, KeyError, TypeError) as exc:
+        raise ControlError("Invalid provider settings") from exc
     # Each enabled provider requires its own credential. Legacy provider's secret
     # remains valid until an explicit, safe migration is performed.
     supplied = values["profiles"]
@@ -294,6 +304,66 @@ def save_multi_ai_settings(install, values):
     except (OSError, ValueError, TypeError, KeyError, provider_profiles.ProfileError) as exc:
         raise ControlError("Could not save multi-provider configuration") from exc
     return {"saved": True, "restartRequired": True}
+
+
+def test_multi_ai_profile(install, values):
+    """Explicit admin-only model probe; it consumes provider API quota."""
+    if not isinstance(values, dict) or set(values) != {"id"} or not isinstance(values["id"], str):
+        raise ControlError("Invalid profile test")
+    profile_id = values["id"]
+    path, metadata = config_file(install)
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    ai = doc.get("Ai", {})
+    matches = [p for p in ai.get("Profiles", []) if p.get("Id") == profile_id]
+    if len(matches) != 1:
+        raise ControlError("Save the provider configuration before testing")
+    profile = matches[0]
+    provider, model = profile.get("Provider"), profile.get("Model")
+    if not provider_profiles.public_eligible(provider, model):
+        raise ControlError("Only approved zero-cost candidates can be tested here")
+    endpoints = {
+        "Groq": "https://api.groq.com/openai/v1/chat/completions",
+        "OpenRouter": "https://openrouter.ai/api/v1/chat/completions",
+    }
+    if provider not in endpoints:
+        raise ControlError("Unsupported public provider")
+    keyfile = provider_profiles.provider_key_path(install, provider)
+    if keyfile.is_file() and not keyfile.is_symlink():
+        key = keyfile.read_text(encoding="utf-8").strip()
+    elif provider == ai.get("Provider") and (install / "ai-api-key.txt").is_file():
+        key = (install / "ai-api-key.txt").read_text(encoding="utf-8").strip()
+    else:
+        raise ControlError("Configure a provider key before testing")
+    payload = json.dumps({"model": model, "messages": [
+        {"role": "user", "content": "Reply with the single word OK."}],
+        "max_tokens": 24}).encode()
+    request = urllib.request.Request(
+        endpoints[provider], data=payload, method="POST",
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=15) as response:
+            result = json.loads(response.read(8192))
+            content = result["choices"][0]["message"]["content"]
+            if not isinstance(content, str) or not content.strip():
+                raise ControlError("The provider returned no text")
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, ValueError,
+            TypeError, KeyError, OSError) as exc:
+        raise ControlError("Provider test failed. Check the model, key and quotas.") from exc
+    profile["Verified"] = True
+    fd, temporary = tempfile.mkstemp(prefix=".ai-test-", dir=str(install))
+    try:
+        os.fchmod(fd, stat.S_IMODE(metadata.st_mode))
+        os.fchown(fd, metadata.st_uid, metadata.st_gid)
+        with os.fdopen(fd, "w", encoding="utf-8") as output:
+            json.dump(doc, output, indent=2, ensure_ascii=False)
+            output.write("\n")
+            output.flush()
+            os.fsync(output.fileno())
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+    return {"verified": True, "provider": provider, "restartRequired": True}
 
 
 def save_ai_settings(install, values):
@@ -495,6 +565,8 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "test_multi_ai_profile":
+        return test_multi_ai_profile(install, settings)
     if command == "get_multi_ai_settings":
         return read_multi_ai_settings(install)
     if command == "save_multi_ai_settings":
