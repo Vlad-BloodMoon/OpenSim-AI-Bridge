@@ -45,6 +45,12 @@ jobs:
       - name: Compile in Release configuration
         run: dotnet build src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-restore
 
+      - name: Verify invariant rate under French locale
+        env:
+          LANG: fr_FR.UTF-8
+          LC_ALL: fr_FR.UTF-8
+        run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-invariant-rate
+
       - name: Publish for Linux x64 (framework-dependent)
         run: |
           dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
