@@ -10,6 +10,8 @@ on:
       - 'deploy/**'
       - 'controller/**'
       - 'web/**'
+      - 'tests/**'
+      - 'docs/MULTI_BOT_V02_FR.md'
   pull_request:
     paths:
       - 'src/**'
@@ -37,6 +39,7 @@ jobs:
         run: |
           bash -n scripts/*.sh
           python3 -m py_compile controller/control.py controller/multi_bot.py
+          python3 -m unittest discover -s tests -v
           php -l web/OpenSim_AI/index.php
 
       - name: Restore dependencies
