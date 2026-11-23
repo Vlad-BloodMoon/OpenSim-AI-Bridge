@@ -70,7 +70,7 @@ def validate_create(values):
     pw = values["password"]
     if not isinstance(pw, str) or not 1 <= len(pw) <= 256 or any(c in pw for c in ("\n", "\r", "\x00")):
         raise BotRegistryError("Invalid password")
-    for field, hi in (("x", 256), ("y", 256), ("z", 4096)):
+    for field, hi in (("x", 8192), ("y", 8192), ("z", 4096)):
         if type(values[field]) is not int or not 0 <= values[field] <= hi:
             raise BotRegistryError("Invalid coordinate")
     return {key: value.strip() if key != "password" and isinstance(value, str) else value for key, value in values.items()}
