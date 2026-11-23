@@ -1,0 +1,30 @@
+[Unit]
+Description=OpenSim AI Bridge avatar instance %i
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=!/var/lib/opensim-ai-bridge/bots/%i/maintenance.lock
+StartLimitIntervalSec=120
+StartLimitBurst=4
+
+[Service]
+Type=simple
+User=@BOT_USER@
+Group=@BOT_USER@
+WorkingDirectory=@INSTALL_DIR@
+Environment=OSAI_INSTALL_DIR=@INSTALL_DIR@
+Environment=OSAI_CONFIG_FILE=/var/lib/opensim-ai-bridge/bots/%i/appsettings.json
+Environment=OSAI_PASSWORD_FILE=/var/lib/opensim-ai-bridge/bots/%i/bot-password.txt
+Environment=OSAI_MAINTENANCE_FILE=/var/lib/opensim-ai-bridge/bots/%i/maintenance.lock
+ExecStart=/usr/bin/bash @INSTALL_DIR@/scripts/start-bot.sh
+KillSignal=SIGINT
+TimeoutStopSec=25
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+UMask=0077
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
