@@ -210,6 +210,57 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = (string) ($response['error'] ?? 'Création impossible.');
                 }
             }
+        } elseif ($action === 'save_multi_ai_settings') {
+            $page = 'modules';
+            $entries = is_array($_POST['profiles'] ?? null) ? array_values($_POST['profiles']) : [];
+            $profiles = [];
+            foreach ($entries as $item) {
+                if (!is_array($item)) continue;
+                $profiles[] = [
+                    'id' => is_string($item['id'] ?? null) ? $item['id'] : '',
+                    'provider' => is_string($item['provider'] ?? null) ? $item['provider'] : '',
+                    'model' => is_string($item['model'] ?? null) ? trim($item['model']) : '',
+                    'enabled' => ($item['enabled'] ?? '') === '1',
+                    'verified' => false,
+                    'apiKey' => is_string($item['apiKey'] ?? null) ? trim($item['apiKey']) : '',
+                ];
+            }
+            $hourly = filter_var($_POST['maxRequestsPerHour'] ?? null, FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 1, 'max_range' => 120]]);
+            $cooldown = filter_var($_POST['minSecondsBetweenRequests'] ?? null, FILTER_VALIDATE_INT,
+                ['options' => ['min_range' => 5, 'max_range' => 3600]]);
+            if ($hourly === false || $cooldown === false) {
+                $error = 'Limites IA invalides.';
+            } else {
+                $settings = [
+                    'enabled' => ($_POST['aiEnabled'] ?? '') === '1',
+                    'mode' => ($_POST['aiMode'] ?? '') === 'auto' ? 'auto' : 'single',
+                    'profiles' => $profiles,
+                    'maxRequestsPerHour' => $hourly,
+                    'minSecondsBetweenRequests' => $cooldown,
+                    'systemPrompt' => is_string($_POST['systemPrompt'] ?? null)
+                        ? trim($_POST['systemPrompt']) : '',
+                ];
+                $response = request_control('save_multi_ai_settings', false, $settings, $selectedBot);
+                if ($response['ok'] ?? false) {
+                    $message = 'Moteurs IA enregistrés. Redémarre cet avatar pour appliquer la configuration.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Enregistrement multi-IA refusé.');
+                }
+            }
+        } elseif (str_starts_with($action, 'test_multi_ai_profile:')) {
+            $page = 'modules';
+            $profileId = substr($action, strlen('test_multi_ai_profile:'));
+            if (!preg_match('/^[a-z0-9-]{1,24}$/D', $profileId)) {
+                $error = 'Profil de test invalide.';
+            } else {
+                $response = request_control('test_multi_ai_profile', false, ['id' => $profileId], $selectedBot);
+                if ($response['ok'] ?? false) {
+                    $message = 'Test du fournisseur réussi ! Profil approuvé. Redémarre cet avatar après activation.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Échec du test fournisseur.');
+                }
+            }
         } elseif ($action === 'save_ai_settings') {
             $page = 'modules';
             $uuidsRaw = is_string($_POST['authorizedUuids'] ?? null) ? $_POST['authorizedUuids'] : '';
@@ -313,6 +364,8 @@ $settingsResult = $authenticated ? request_control('get_settings', false, null, 
 $botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
 $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_settings', false, null, $selectedBot) : null;
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
+$multiResult = $authenticated && $page === 'modules' ? request_control('get_multi_ai_settings', false, null, $selectedBot) : null;
+$multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
 $kbResponse = $authenticated && $page === 'knowledge' ? request_control('knowledge_status') : null;
 $kb = is_array($kbResponse['result'] ?? null) ? $kbResponse['result'] : null;
 $kbRunning = in_array(($kb['service'] ?? ''), ['active', 'activating', 'reloading'], true);
@@ -678,123 +731,116 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
 <section class="panel">
-<h2>IA distante — <?= esc($selectedName) ?></h2>
-<p class="muted">Premier moteur IA pour les <strong>messages privés (IM)</strong> : OpenAI, Groq ou OpenRouter. Aucun modèle installé sur le serveur. L'IA peut répondre à tous les résidents avec Groq si tu actives l'accès public. Sinon, seuls les UUID autorisés sont acceptés. Les commandes ping / help / where restent utilisables sans IA.</p>
-<?php if ($aiSettings === null): ?>
-<div class="notice error">Paramètres IA indisponibles : contrôleur à mettre à jour.</div>
+<h2>Multi-IA — <?= esc($selectedName) ?></h2>
+<p class="muted">Une chaîne de moteurs IA distants, ordonnée par priorité. Le premier moteur actif et testé est utilisé ; le mode multi-IA tente le suivant si le précédent est indisponible ou limité. Tous les résidents peuvent dialoguer en IM avec cet avatar lorsqu'au moins un moteur public approuvé est activé.</p>
+<?php if ($multiSettings === null): ?>
+<div class="notice error">Paramètres multi-IA indisponibles : contrôleur à mettre à jour.</div>
 <?php else: ?>
-<form method="post" autocomplete="off">
+<?php
+$profiles = is_array($multiSettings['profiles'] ?? null) ? $multiSettings['profiles'] : [];
+$providersAlready = array_column($profiles, 'provider');
+foreach (['OpenRouter' => 'openrouter/free', 'OpenAI' => 'gpt-4.1-mini'] as $provider => $model) {
+    if (!in_array($provider, $providersAlready, true))
+        $profiles[] = ['id' => strtolower($provider), 'provider' => $provider, 'model' => $model,
+                       'enabled' => false, 'verified' => false, 'hasKey' => false];
+}
+?>
+<form method="post" autocomplete="off" id="multi-ai-form">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <input type="hidden" name="page" value="modules">
-<fieldset>
-<legend>Activation</legend>
-<label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($aiSettings['enabled']) ? 'checked' : '' ?>> Activer les réponses IA pour cet avatar</label>
+<fieldset><legend>Fonctionnement</legend>
+<label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($multiSettings['enabled']) ? 'checked' : '' ?>> Activer les conversations IA pour cet avatar</label>
+<label for="ai-mode">Mode de fonctionnement</label>
+<select id="ai-mode" name="aiMode">
+<option value="single" <?= ($multiSettings['mode'] ?? 'single') === 'single' ? 'selected' : '' ?>>IA unique — premier moteur actif et testé</option>
+<option value="auto" <?= ($multiSettings['mode'] ?? '') === 'auto' ? 'selected' : '' ?>>Multi-IA — basculement automatique selon la priorité</option>
+</select>
 </fieldset>
+<h3>Priorité et configuration des moteurs</h3>
+<p class="muted">Utilise ↑ et ↓ pour changer leur ordre. Les moteurs non testés ne sont jamais utilisés. Enregistre d'abord un nouveau modèle ou une nouvelle clé, puis clique sur « Tester ». Un test réel consomme une requête API et peut être facturé si tu as activé la facturation chez le fournisseur.</p>
+<div id="ai-profile-list">
+<?php foreach ($profiles as $index => $entry): ?>
+<div class="panel ai-profile" style="margin:.7rem 0;padding:1rem" data-profile-id="<?= esc((string)($entry['id'] ?? '')) ?>">
+<div class="row" style="display:flex;gap:.7rem;align-items:center;justify-content:space-between">
+<strong class="ai-rank"><?= $index+1 ?>. <?= esc((string)($entry['provider'] ?? '')) ?></strong>
+<div class="actions">
+<button type="button" class="secondary ai-up" aria-label="Monter le moteur" title="Monter">↑</button>
+<button type="button" class="secondary ai-down" aria-label="Descendre le moteur" title="Descendre">↓</button>
+</div>
+</div>
+<input type="hidden" data-field="id" value="<?= esc((string)($entry['id'] ?? '')) ?>">
 <div class="grid">
-<div><label for="ai-provider">Fournisseur distant</label><select id="ai-provider" name="aiProvider">
-<?php foreach (['OpenAI','Groq','OpenRouter'] as $provider): ?>
-<option value="<?= esc($provider) ?>" <?= ($aiSettings['provider'] ?? '') === $provider ? 'selected' : '' ?>><?= esc($provider) ?></option>
+<div><label>Fournisseur</label>
+<select data-field="provider" class="ai-provider-select">
+<?php foreach (['Groq', 'OpenRouter', 'OpenAI'] as $provider): ?>
+<option value="<?= esc($provider) ?>" <?= ($entry['provider'] ?? '') === $provider ? 'selected' : '' ?>><?= esc($provider) ?></option>
 <?php endforeach ?>
 </select></div>
-<div><label for="ai-model-preset">Modèle proposé</label>
-<select id="ai-model-preset" aria-describedby="ai-model-hint"></select>
-<label for="ai-model">Identifiant du modèle (modifiable)</label>
-<input type="text" id="ai-model" name="aiModel" maxlength="100" required value="<?= esc((string) ($aiSettings['model'] ?? 'gpt-4.1-mini')) ?>">
-<small id="ai-model-hint" class="muted">Les modèles proposés dépendent du fournisseur. Tu peux aussi saisir un identifiant personnalisé.</small></div>
+<div><label>Modèle</label><input type="text" data-field="model" required maxlength="100"
+value="<?= esc((string)($entry['model'] ?? '')) ?>" placeholder="Identifiant du modèle"></div>
 </div>
-<label for="ai-key">Clé API privée</label>
-<input type="password" id="ai-key" name="aiKey" maxlength="256" autocomplete="new-password" placeholder="<?= !empty($aiSettings['hasKey']) ? 'Clé déjà enregistrée — laisser vide pour conserver' : 'Saisir la clé API du fournisseur' ?>">
-<p class="muted">La clé est enregistrée hors du répertoire Web, dans un fichier privé de cet avatar. Elle n'est jamais réaffichée.</p>
-<fieldset><legend>Accès aux conversations IA</legend>
-<label><input type="checkbox" id="ai-public-access" name="aiPublicAccess" value="1" <?= !empty($aiSettings['publicAccess']) ? 'checked' : '' ?>> Autoriser tous les résidents à converser en IM avec cet avatar (Groq uniquement)</label>
-<p class="muted">Tous les utilisateurs de la grille et les visiteurs Hypergrid capables d’envoyer un IM pourront solliciter Groq. Les quotas du fournisseur restent applicables. Pour OpenAI, conserve une liste d’UUID autorisés.</p>
-</fieldset>
-<label for="ai-uuids">UUID autorisés (un par ligne — facultatif si l’accès public Groq est activé)</label>
-<textarea id="ai-uuids" name="authorizedUuids" rows="4" maxlength="450" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"><?= esc(implode("\n", is_array($aiSettings['authorizedUuids'] ?? null) ? $aiSettings['authorizedUuids'] : [])) ?></textarea>
+<label><input type="checkbox" data-field="enabled" value="1" <?= !empty($entry['enabled']) ? 'checked' : '' ?>> Activer dans la chaîne</label>
+<label>Clé API <?= !empty($entry['hasKey']) ? '(déjà enregistrée)' : '(non enregistrée)' ?></label>
+<input type="password" data-field="apiKey" maxlength="256" autocomplete="new-password"
+placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé' : 'Saisir une clé pour ce fournisseur' ?>">
+<div class="row" style="display:flex;justify-content:space-between;align-items:center;gap:1rem">
+<small class="muted"><?= !empty($entry['verified']) ? '✅ Modèle testé et approuvé' : '○ À tester avant activation publique' ?></small>
+<button type="submit" class="secondary ai-test-button" name="action" value="test_multi_ai_profile:<?= esc((string)($entry['id'] ?? '')) ?>">Tester le modèle enregistré</button>
+</div>
+</div>
+<?php endforeach ?>
+</div>
 <div class="grid">
-<div><label for="ai-hour">Limite de demandes par heure (tous les utilisateurs confondus)</label>
-<input type="number" id="ai-hour" name="maxRequestsPerHour" min="1" max="120" required value="<?= esc((string) ($aiSettings['maxRequestsPerHour'] ?? 30)) ?>"></div>
-<div><label for="ai-delay">Délai entre demandes du même utilisateur (secondes)</label>
-<input type="number" id="ai-delay" name="minSecondsBetweenRequests" min="5" max="3600" required value="<?= esc((string) ($aiSettings['minSecondsBetweenRequests'] ?? 15)) ?>"></div>
+<div><label for="ai-hour">Demandes / heure (par avatar)</label>
+<input id="ai-hour" type="number" name="maxRequestsPerHour" min="1" max="120" required value="<?= (int)($multiSettings['maxRequestsPerHour'] ?? 30) ?>"></div>
+<div><label for="ai-delay">Délai entre les questions d'un résident (secondes)</label>
+<input id="ai-delay" type="number" name="minSecondsBetweenRequests" min="5" max="3600" required value="<?= (int)($multiSettings['minSecondsBetweenRequests'] ?? 15) ?>"></div>
 </div>
-<label for="ai-prompt">Consignes de l'assistant</label>
-<textarea id="ai-prompt" name="systemPrompt" rows="4" maxlength="600" required><?= esc((string) ($aiSettings['systemPrompt'] ?? '')) ?></textarea>
-<p class="muted">Un fournisseur peut facturer ses requêtes. Les limites horaires sont des garde-fous applicatifs, pas un plafond de facturation garanti. Les IM autorisés sont transmis au fournisseur choisi.</p>
-<button name="action" value="save_ai_settings">Enregistrer l'IA pour <?= esc($selectedName) ?></button>
+<label for="multi-prompt">Consignes de l'assistant</label>
+<textarea id="multi-prompt" name="systemPrompt" rows="3" maxlength="600" required><?= esc((string)($multiSettings['systemPrompt'] ?? '')) ?></textarea>
+<p class="muted">Les modèles OpenAI payants ne peuvent pas être approuvés pour le routage public gratuit. Les profils OpenRouter doivent utiliser un modèle gratuit et réussir leur test. Les anciennes clés et paramètres sont conservés pour un retour arrière.</p>
+<button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
 </section>
 <script nonce="<?= esc($scriptNonce) ?>">
 (function () {
   'use strict';
-  var provider = document.getElementById('ai-provider');
-  var presets = document.getElementById('ai-model-preset');
-  var model = document.getElementById('ai-model');
-  var publicAccess = document.getElementById('ai-public-access');
-  if (!provider || !presets || !model) return;
-  // Suggestions only; provider offerings and account permissions may change.
-  var catalog = {
-    Groq: [
-      ['openai/gpt-oss-20b', 'GPT-OSS 20B — premier test'],
-      ['openai/gpt-oss-120b', 'GPT-OSS 120B'],
-      ['llama-3.3-70b-versatile', 'Llama 3.3 70B Versatile']
-    ],
-    OpenAI: [
-      ['gpt-4.1-mini', 'GPT-4.1 mini'],
-      ['gpt-4o-mini', 'GPT-4o mini'],
-      ['gpt-4.1', 'GPT-4.1']
-    ],
-    OpenRouter: [
-      ['openai/gpt-oss-20b:free', 'GPT-OSS 20B (gratuit, si disponible)']
-    ]
-  };
-  function option(value, label) {
-    var item = document.createElement('option');
-    item.value = value;
-    item.textContent = label;
-    return item;
+  var form = document.getElementById('multi-ai-form');
+  var list = document.getElementById('ai-profile-list');
+  if (!form || !list) return;
+  function renumber() {
+    var cards = Array.from(list.querySelectorAll('.ai-profile'));
+    cards.forEach(function (card, i) {
+      card.querySelector('.ai-rank').textContent = (i + 1) + '. ' + card.querySelector('[data-field="provider"]').value;
+      card.querySelectorAll('[data-field]').forEach(function (input) {
+        input.name = 'profiles[' + i + '][' + input.dataset.field + ']';
+      });
+      card.querySelector('.ai-up').disabled = i === 0;
+      card.querySelector('.ai-down').disabled = i === cards.length - 1;
+    });
   }
-  function refresh(changeProvider) {
-    var list = catalog[provider.value] || [];
-    var current = model.value.trim();
-    presets.replaceChildren();
-    list.forEach(function (item) { presets.appendChild(option(item[0], item[1])); });
-    presets.appendChild(option('__custom__', 'Autre modèle — saisir ci-dessous'));
-    var found = list.some(function (item) { return item[0] === current; });
-    if (!changeProvider && !found && current) {
-      presets.value = '__custom__'; // Preserve existing saved model.
-    } else {
-      if (changeProvider || !current) model.value = list.length ? list[0][0] : '';
-      presets.value = list.some(function (item) { return item[0] === model.value; })
-        ? model.value : '__custom__';
+  list.addEventListener('click', function (event) {
+    var btn = event.target.closest('button.ai-up, button.ai-down');
+    if (!btn) return;
+    var card = btn.closest('.ai-profile');
+    if (btn.classList.contains('ai-up') && card.previousElementSibling)
+      list.insertBefore(card, card.previousElementSibling);
+    else if (btn.classList.contains('ai-down') && card.nextElementSibling)
+      list.insertBefore(card.nextElementSibling, card);
+    renumber();
+  });
+  list.addEventListener('change', function (event) {
+    if (event.target.matches('.ai-provider-select')) {
+      var card = event.target.closest('.ai-profile');
+      card.querySelector('.ai-rank').textContent =
+        (Array.from(list.children).indexOf(card) + 1) + '. ' + event.target.value;
     }
-  }
-  function updatePublicAccess() {
-    if (!publicAccess) return;
-    if (provider.value !== "Groq") publicAccess.checked = false;
-    publicAccess.disabled = provider.value !== "Groq";
-  }
-  provider.addEventListener('change', function () { refresh(true); updatePublicAccess(); });
-  presets.addEventListener('change', function () {
-    if (presets.value !== '__custom__') model.value = presets.value;
-    else { model.focus(); model.select(); }
   });
-  model.addEventListener('input', function () {
-    presets.value = Array.from(presets.options).some(function (item) {
-      return item.value === model.value;
-    }) ? model.value : '__custom__';
-  });
-  refresh(false);
-  updatePublicAccess();
+  renumber();
 }());
 </script>
-<section class="panel"><h2>Prochaines fonctionnalités</h2>
-<div class="module-grid">
-<div class="stat"><strong>FAQ et base de connaissances</strong><small>Réponses éditables et documents par bot</small></div>
-<div class="stat"><strong>Traduction BloodMoon</strong><small>Langue et traduction des conversations</small></div>
-<div class="stat"><strong>Historique et budgets</strong><small>Journal et plafonds persistants par fournisseur</small></div>
-</div></section>
 <?php endif ?>
 <?php endif ?>
 <footer>Aucune clé API ou mot de passe avatar n'est stocké dans ce répertoire Web.</footer>
