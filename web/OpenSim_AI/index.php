@@ -663,7 +663,7 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <button name="action" value="knowledge_refresh" <?= ($kb['service'] ?? '') === 'active' ? 'disabled' : '' ?>>Actualiser l'indexation des quatre sites</button>
 </form>
-<p class="muted">Le traitement s'exécute indépendamment via systemd. Recharge cette page pour voir les compteurs. Les sources privées ne doivent pas être indexées. Cette base n'est pas encore utilisée pour répondre aux IM ; le raccordement à l'IA sera la prochaine étape.</p>
+<p class="muted">La synchronisation s'exécute indépendamment des avatars IA. Actualise cette page pour consulter les compteurs. Seules les ressources publiques autorisées sont indexées.</p>
 <?php endif ?>
 </section>
 <?php endif ?>
