@@ -154,7 +154,7 @@ def save_settings(install, values):
             os.fchown(fd, metadata.st_uid, metadata.st_gid)
             with os.fdopen(fd, "w", encoding="utf-8") as file:
                 json.dump(data, file, ensure_ascii=False, indent=2)
-                file.write("\\n")
+                file.write("\n")
                 file.flush()
                 os.fsync(file.fileno())
             os.replace(temp, path)
