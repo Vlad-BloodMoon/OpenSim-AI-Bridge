@@ -112,7 +112,7 @@ def existing_profiles(ai, install):
             provider = "Groq"
         profiles = [{"Id": "primary", "Provider": provider,
                      "Model": ai.get("Model", PROVIDERS[provider]["default"]),
-                     "Enabled": True, "Verified": provider == "Groq",
+                     "Enabled": True, "Verified": provider == "Groq" and (Path(install) / "ai-api-key.txt").is_file(),
                      "ApiKeyEnv": PROVIDERS[provider]["keyenv"]}]
     result = []
     for entry in profiles:
