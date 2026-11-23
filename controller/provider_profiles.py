@@ -32,7 +32,7 @@ def public_eligible(provider, model):
     # Zero-cost default must be fail-closed. OpenRouter :free is a candidate
     # but still requires administrator approval; provider billing needs checking.
     return provider == "Groq" or (provider == "OpenRouter" and model.endswith(":free")) or (
-        provider == "OpenRouter" and model == "openrouter/free") or (provider == "Gemini" and model in ("gemini-3-flash-preview",))
+        provider == "OpenRouter" and model == "openrouter/free") or (provider == "Gemini" and model in ("gemini-3-flash-preview", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite"))
 
 
 def normalize(values):
@@ -41,8 +41,8 @@ def normalize(values):
     if type(values["enabled"]) is not bool or values["mode"] not in ("single", "auto"):
         raise ProfileError("Invalid activation or mode")
     profiles = values["profiles"]
-    if not isinstance(profiles, list) or not 1 <= len(profiles) <= 8:
-        raise ProfileError("Add 1–8 provider profiles")
+    if not isinstance(profiles, list) or not 1 <= len(profiles) <= 16:
+        raise ProfileError("Add 1–16 provider profiles")
     result, seen = [], set()
     for entry in profiles:
         if not isinstance(entry, dict) or set(entry) != {"id", "provider", "model", "enabled", "verified", "apiKey"}:
