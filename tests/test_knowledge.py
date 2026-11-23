@@ -41,6 +41,15 @@ class KnowledgeTests(unittest.TestCase):
         self.assertEqual(kb.approved("roleplay", "https://bloodmoonpack.com/roleplay/pages/guide.php?lang=fr"), "https://bloodmoonpack.com/roleplay/pages/guide.php?lang=fr")
         self.assertIsNone(kb.approved("grid", "https://bloodmoonpack.com/grid/login.php"))
         self.assertIsNone(kb.approved("roleplay", "https://bloodmoonpack.com/grid/"))
+        pdf_url = "https://bloodmoonpack.com/Download/GUIDE/THE_CURSE_GB.pdf"
+        self.assertEqual(kb.approved("roleplay", pdf_url), pdf_url)
+        self.assertIsNone(kb.approved("grid", pdf_url))
+        self.assertIsNone(kb.approved("roleplay", "https://bloodmoonpack.com/Download/PRIVATE/secret.pdf"))
+        self.assertIsNone(kb.approved("roleplay", "https://other.invalid/Download/GUIDE/guide.pdf"))
+        self.assertEqual(kb.MAX_SITE_PAGES, 2500)
+        guide_html = '<nav><a href="/roleplay/pages/guide.php">Guide</a></nav><a href="/Download/GUIDE/THE_CURSE_GB.pdf">PDF</a>'
+        _, _, links = kb.parse_page(guide_html)
+        self.assertIn("/Download/GUIDE/THE_CURSE_GB.pdf", links)
 
     def test_invalid_source_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
