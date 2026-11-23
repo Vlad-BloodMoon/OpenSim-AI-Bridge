@@ -57,7 +57,7 @@ function check_csrf(): bool {
     return isset($_POST['csrf']) && is_string($_POST['csrf'])
         && hash_equals(csrf_token(), $_POST['csrf']);
 }
-function request_control(string $action, bool $confirm = false, ?array $settings = null, string $botId = 'main', ?array $credentials = null): array {
+function request_control(string $action, bool $confirm = false, ?array $settings = null, string $botId = 'main', ?array $credentials = null, ?string $expectedName = null): array {
     $errno = 0;
     $errstr = '';
     $fp = @stream_socket_client('unix://' . CONTROL_SOCKET, $errno, $errstr, 2.0);
@@ -69,6 +69,7 @@ function request_control(string $action, bool $confirm = false, ?array $settings
     if ($settings !== null) $payload['settings'] = $settings;
     $payload['botId'] = $botId;
     if ($credentials !== null) $payload['credentials'] = $credentials;
+    if ($expectedName !== null) $payload['expectedName'] = $expectedName;
     $sent = fwrite($fp, json_encode($payload, JSON_THROW_ON_ERROR) . "\n");
     if ($sent === false) {
         fclose($fp);
@@ -152,6 +153,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $message = $action === 'fleet_stop' ? 'Maintenance générale activée.' : 'Maintenance générale terminée.';
                 } else {
                     $error = (string) ($response['error'] ?? 'Erreur de maintenance générale.');
+                }
+            }
+        } elseif ($action === 'delete_bot') {
+            $page = 'avatars';
+            $expectedName = is_string($_POST['confirm_name'] ?? null) ? trim($_POST['confirm_name']) : '';
+            if ($selectedBot === 'main' || ($_POST['delete_confirm'] ?? '') !== 'yes' || $expectedName === '') {
+                $error = 'Suppression refusée : confirmation incomplète ou avatar principal.';
+            } else {
+                $response = request_control('delete_bot', true, null, $selectedBot, null, $expectedName);
+                if ($response['ok'] ?? false) {
+                    $message = 'Avatar supprimé de OpenSim AI Bridge : ' . $expectedName . '. Son compte sur la grille n’a pas été supprimé.';
+                    $selectedBot = 'main';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Impossible de supprimer cet avatar.');
                 }
             }
         } elseif ($action === 'create_bot') {
@@ -338,6 +353,14 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 .module-grid .stat strong{display:block;font-size:1rem}
 .module-grid .stat small{margin-top:.4rem}
 @media(max-width:600px){.admin-menu{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.25rem}.admin-menu a{text-align:center;padding:.65rem .3rem;font-size:.8rem}}
+.avatar-entry{min-width:0}
+.avatar-delete{margin-top:.4rem;border:1px solid #493946;border-radius:9px;padding:.35rem .6rem;font-size:.82rem}
+.avatar-delete>summary{cursor:pointer;color:#e4a8af}
+.avatar-delete form{padding:.7rem .2rem}
+.avatar-delete input[type=text]{font-size:.9rem}
+.avatar-delete button{margin-top:.6rem}
+.confirm-line{display:flex;gap:.5rem;align-items:center;margin:.75rem 0}
+.protected-bot{display:block;padding:.4rem .3rem;font-size:.75rem}
 </style>
 </head>
 <body>
@@ -380,9 +403,29 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 <?php if ($bots): ?>
 <nav class="avatar-list" aria-label="Sélection des avatars">
 <?php foreach ($bots as $bot): ?>
+<?php $botFullName = trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? '')); ?>
+<div class="avatar-entry">
 <a class="avatar-item <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>" href="?page=dashboard&amp;bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>" <?= $selectedBot === ($bot['id'] ?? '') ? 'aria-current="page"' : '' ?>>
-<span class="avatar-dot" aria-hidden="true">●</span><span class="avatar-text"><strong><?= esc(trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''))) ?></strong><small><?= esc((string) ($bot['region'] ?? '')) ?></small></span><span aria-hidden="true">›</span>
+<span class="avatar-dot" aria-hidden="true">●</span><span class="avatar-text"><strong><?= esc($botFullName) ?></strong><small><?= esc((string) ($bot['region'] ?? '')) ?></small></span><span aria-hidden="true">›</span>
 </a>
+<?php if (($bot['id'] ?? '') !== 'main'): ?>
+<details class="avatar-delete">
+<summary>Supprimer ce bot</summary>
+<form method="post" autocomplete="off">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="avatars">
+<input type="hidden" name="botId" value="<?= esc((string) $bot['id']) ?>">
+<p class="muted">Arrête et désactive son service, puis efface sa configuration et son mot de passe privés. Le compte OpenSimulator reste intact.</p>
+<label>Pour confirmer, écris exactement <strong><?= esc($botFullName) ?></strong> :</label>
+<input type="text" name="confirm_name" autocomplete="off" required placeholder="<?= esc($botFullName) ?>">
+<label class="confirm-line"><input type="checkbox" name="delete_confirm" value="yes" required> Je confirme la suppression définitive de ce bot.</label>
+<button class="danger" name="action" value="delete_bot">Supprimer <?= esc($botFullName) ?></button>
+</form>
+</details>
+<?php else: ?>
+<small class="muted protected-bot">Avatar principal protégé</small>
+<?php endif ?>
+</div>
 <?php endforeach ?>
 </nav>
 <?php else: ?>
