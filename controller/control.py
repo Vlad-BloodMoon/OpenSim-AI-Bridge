@@ -225,7 +225,7 @@ def fleet_resume(confirmed):
     failed = 0
     for unit in prior:
         if unit == UNIT:
-            personal_lock = None
+            personal_lock = None  # Existing main-avatar Firestorm lock is checked by systemd
         else:
             bot_id = unit[len("opensim-ai-bridge@"):-len(".service")]
             personal_lock = multi_bot.bot_path(bot_id) / "maintenance.lock"
