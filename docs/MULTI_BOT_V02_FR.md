@@ -110,3 +110,7 @@ La suppression des fichiers est **définitive** et ne peut pas être annulée au
 ## Notifications d'administration (23 novembre 2026)
 
 Les confirmations de succès (ajout, suppression, démarrage, arrêt, sauvegarde) sont affichées comme notifications à usage unique après la redirection HTTP 303, puis **s'effacent visuellement après 6 secondes** par animation CSS (sans recharger la page et sans refaire l'action). Les erreurs restent visibles pour permettre le diagnostic. L'état réel du service, la liste des avatars et les compteurs de ressources restent indépendants des notifications de succès.
+
+## Correctif du verrou global — 23 novembre 2026
+
+Lors du premier essai du bouton de maintenance, le Web a renvoyé `OSError` et l'administration affichait un verrou inactif. Le journal du contrôleur ne montrait aucune erreur de démarrage ; le répertoire `/var/lib/opensim-ai-bridge/` ne contenait aucun verrou. Cause identifiée dans le modèle `deploy/systemd/opensim-ai-bridge-control.service.example` : `ProtectSystem=strict` et `ReadWritePaths` limitaient les écritures à `/var/lib/opensim-ai-bridge/bots`, alors que `fleet_stop` écrit un instantané et un verrou dans le dossier parent. Correction : autoriser `ReadWritePaths=/var/lib/opensim-ai-bridge` tout en gardant `ProtectSystem=strict` et les autres restrictions. Appliquer le changement à l'unité installée, recharger `systemd` puis redémarrer uniquement le contrôleur. L'arrêt et la reprise globale doivent être retestés avant toute modification de DLL.
