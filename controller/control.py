@@ -14,6 +14,7 @@ import struct
 import subprocess
 import sys
 import tempfile
+import time
 
 UNIT = "opensim-ai-bridge.service"
 COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume"))
@@ -68,12 +69,37 @@ def create_lock(path):
             os.unlink(temp)
 
 
-def execute(command, lock, confirm):
+def avatar_presence(install):
+    """Report only fresh, validated heartbeat values, never arbitrary bot data."""
+    file = install / "data" / "avatar-status.json"
+    try:
+        if not file.is_file() or file.stat().st_size > 4096:
+            return {"connected": False, "state": "unavailable"}
+        data = json.loads(file.read_text(encoding="utf-8"))
+        ts = data.get("updatedUtc")
+        fresh = isinstance(ts, int) and 0 <= time.time() - ts < 15
+        online = fresh and data.get("connected") is True and data.get("state") == "online"
+        region = data.get("region")
+        coords = (data.get("x"), data.get("y"), data.get("z"))
+        if not online or not isinstance(region, str) or len(region) > 128 or not all(type(v) in (float, int) and abs(v) < 1e7 for v in coords):
+            return {"connected": False, "state": "stale" if not fresh else "offline"}
+        return {
+            "connected": True,
+            "state": "online",
+            "region": region,
+            "position": {"x": round(coords[0], 2), "y": round(coords[1], 2), "z": round(coords[2], 2)},
+            "ageSeconds": max(0, int(time.time() - ts))
+        }
+    except (OSError, ValueError, TypeError, AttributeError):
+        return {"connected": False, "state": "unavailable"}
+
+
+def execute(command, lock, confirm, install):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
     if command == "status":
-        return {**service_state(), "maintenance": lock.exists()}
+        return {**service_state(), "maintenance": lock.exists(), "avatar": avatar_presence(install)}
 
     if command in ("start", "restart") and lock.exists():
         raise ControlError("Firestorm maintenance is enabled; resume first")
@@ -97,7 +123,7 @@ def execute(command, lock, confirm):
     return {**service_state(), "maintenance": lock.exists()}
 
 
-def handle(client, allowed_uid, lock):
+def handle(client, allowed_uid, lock, install):
     # Authenticate the OS-level peer: only the Apache/PHP account.
     creds = client.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12)
     _, uid, _ = struct.unpack("3i", creds)
@@ -116,7 +142,7 @@ def handle(client, allowed_uid, lock):
         msg = json.loads(buf.split(b"\n", 1)[0])
         if not isinstance(msg, dict) or set(msg) - {"action", "confirm"}:
             raise ControlError("Invalid request")
-        result = execute(msg.get("action"), lock, msg.get("confirm") is True)
+        result = execute(msg.get("action"), lock, msg.get("confirm") is True, install)
         return {"ok": True, "result": result}
     except (ValueError, TypeError, ControlError) as exc:
         return {"ok": False, "error": str(exc)}
@@ -147,7 +173,7 @@ def main():
             client, _ = server.accept()
             with client:
                 try:
-                    response = handle(client, allowed_uid, lock)
+                    response = handle(client, allowed_uid, lock, install)
                 except (OSError, UnicodeDecodeError) as exc:
                     response = {"ok": False, "error": type(exc).__name__}
                 try:
