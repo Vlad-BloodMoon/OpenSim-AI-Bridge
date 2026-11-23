@@ -151,7 +151,7 @@ if (args.Length == 1 && args[0] == "--verify-im-chunks")
         return 1;
     }
     var sentenceCase = "Les vampires perdent quatre unités chaque nuit. " +
-        new string('x', 320) + ". Ils peuvent se protéger avec les objets prévus.";
+        new string('x', 900) + ". Ils peuvent se protéger avec les objets prévus.";
     var sentenceParts = ImReplyFormatter.Split(sentenceCase);
     if (sentenceParts.Count < 2 || !sentenceParts[0].EndsWith("nuit.", StringComparison.Ordinal))
     {
