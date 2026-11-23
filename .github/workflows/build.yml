@@ -78,7 +78,7 @@ jobs:
           cp controller/control.py controller/multi_bot.py dist/linux-x64/controller/
           cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
           cp docs/WEB_INSTALL_V02_FR.md dist/linux-x64/
-          cp docs/MULTI_BOT_V02_FR.md dist/linux-x64/
+          cp docs/MULTI_BOT_V02_FR.md docs/REMOTE_AI_V03_FR.md dist/linux-x64/
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
