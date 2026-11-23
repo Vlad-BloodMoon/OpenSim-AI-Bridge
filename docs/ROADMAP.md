@@ -17,8 +17,8 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 - [ ] Authenticated Web controls: start, stop, restart, status/position/logs.
 - [x] Firestorm lock prevents manual systemd startup; stop/resume verified 2026-11-23. **Survival of full server reboot still untested**.
 - [ ] Distinguish intentional shutdown from network failure; prevent session battles with Firestorm.
-- [ ] Secure web login, roles and API.
-- [ ] Dashboard for bot status/location, technical logs and controls.
+- [ ] Secure web login and API: initial password-authenticated PHP dashboard and restricted Unix-socket controller **coded, not yet deployed/tested**; RBAC and stronger isolation pending.
+- [ ] Dashboard: systemd status and controls **coded, not yet tested**; actual avatar location and technical logs still pending.
 - [ ] Persistent FAQ CRUD, categories, variants, multilingual entries and safe template variables.
 - [ ] Unknown-question moderation queue, response previews and audit history.
 - [ ] Verify public chat never triggers paid AI by default.
