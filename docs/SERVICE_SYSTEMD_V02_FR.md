@@ -1,6 +1,6 @@
 # Service Linux et mode Firestorm (V0.2 en préparation)
 
-**État :** modèles de service et commandes publiés, **pas encore installés sur BloodMoon**.
+**État :** service installé et cycle local démarrage/arrêt/Firestorm/reprise **testé avec succès sur BloodMoon le 23 novembre 2026**. L'interface Web et la tenue après reboot ne sont pas encore validées.
 Le pilote dispose déjà de son répertoire `/home/louna49400/OpenSim-AI-Bridge` et de son mot de passe privé `bot-password.txt`.
 
 ## But
