@@ -48,3 +48,21 @@ Ne jamais indexer : paramètres d'administration, secrets, sessions, profils pri
 - Source supprimée, PDF malformé, HTTP indisponible, index vide, tentative d'injection dans page : aucune erreur non traitée ni appel non autorisé.
 
 Cette conception ne garantit pas une connaissance exhaustive ; la qualité dépend des documents collectés et vérifiés.
+
+## Phase 1 livrée — outil d'indexation SQLite (prototype)
+
+Fichiers : `knowledge/knowledge_cli.py` et `tests/test_knowledge.py`. Python standard uniquement, SQLite FTS5 inclus sous réserve de la distribution Python. **Ne modifie ni les services des bots, ni leurs clés, ni le contrôleur Web.** Le fichier de base sera créé à `/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.db` lorsque l'administrateur exécutera la commande.
+
+Premier périmètre volontairement limité aux **quatre pages d'accueil exactes** : `https://bloodmoonpack.com/grid/`, `https://bloodmoonpack.com/`, `https://bloodmoonpack.com/Marketplace/`, `https://bloodmoonpack.com/OpenSim_Handbook/`. Pas de crawl des liens, pas d'accès à l'administration, pas de PDF à ce stade. Les redirections HTTP sont refusées et doivent être examinées avant de modifier une URL approuvée ; taille et type HTML des réponses limités. Les zones navigation/formulaires/scripts sont exclues de l'extraction. Les changements ne réindexent un document que si son empreinte SHA-256 change. Une erreur de téléchargement n'efface pas les données précédentes.
+
+Après récupération de l'artefact validé, installer uniquement le fichier d'outil dans `/home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py` avec droits du compte bot, vérifier sa compilation `python3 -m py_compile`, puis :
+
+```bash
+python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py import --source all
+python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py status
+python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py search "vampire malédiction"
+```
+
+Tester d'abord `import --source grid`, puis `status` et `search "rejoindre grille"`. L'extraction réelle doit être contrôlée : sites générés en JavaScript, erreurs de redirection ou contenus vides peuvent nécessiter des exports structurés au lieu de HTML. L'outil ne prétend **pas** encore connaître toutes les pages, ni être utilisé automatiquement par les bots ; le branchement du moteur IM et les mises à jour automatiques seront des phases ultérieures.
+
+**Sécurité et sauvegarde :** base documentaire hors du répertoire Web, pas de secret dans l'index, éviter toute publication du fichier .db. Les données indexées sont publiques, mais peuvent contenir des résidus de navigation ; inspecter les résultats avant ouverture à l'IA. La base est partagée logiquement : elle sera consultée en lecture seule par les avatars lors de la phase suivante.
