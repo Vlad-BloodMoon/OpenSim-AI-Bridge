@@ -170,7 +170,13 @@ public sealed class RemoteAiResponder : IDisposable
             var hits = knowledge.Search(prompt);
             var context = KnowledgeSearch.BuildContext(hits);
             var history = PreviousTurns(sender, now);
-            var messages = new List<object> { new { role = "system", content = settings.SystemPrompt } };
+            var messages = new List<object> { new { role = "system", content =
+                settings.SystemPrompt +
+                "\\nRéponds en texte brut lisible dans les messages privés OpenSimulator/Firestorm. " +
+                "N'utilise jamais de tableaux Markdown, ni de blocs de code, ni de titres Markdown. " +
+                "Privilégie quelques paragraphes courts ou une liste simple. " +
+                "Réponds précisément et complètement, dans la langue du résident. " +
+                "Cite une URL source uniquement lorsque c'est utile. " } };
             if (Multi)
             {
                 foreach (var (question, answer) in history)
@@ -209,7 +215,7 @@ public sealed class RemoteAiResponder : IDisposable
                 try
                 {
                     var payload = new { model = profile.Model, messages,
-                                        max_tokens = 400, temperature = 0.5 };
+                                        max_tokens = 900, temperature = 0.4 };
                     using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
                     request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8,
@@ -243,7 +249,7 @@ public sealed class RemoteAiResponder : IDisposable
                         switched = true;
                         continue;
                     }
-                    reply = reply.Length > 560 ? reply[..560] + "…" : reply;
+                    // Preserve the complete model response; the IM transport splits it safely.
                     Remember(sender, now, prompt, reply);
                     // Never disclose provider/API keys in resident messages.
                     return (switched && Multi ? SwitchNotice(prompt) : "") + reply;
