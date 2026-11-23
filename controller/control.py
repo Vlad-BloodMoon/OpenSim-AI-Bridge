@@ -400,7 +400,19 @@ def knowledge_status(install):
                 ]
         except (sqlite3.Error, OSError):
             counts = []
-    return {"service": state.get("active", "unknown"), "sources": counts, "database": db.is_file()}
+    # A completed oneshot is 'inactive'; distinguish a successful exit from failure.
+    # Query only fixed systemd properties; never return untrusted journal contents.
+    try:
+        raw = systemctl("show", "--property=Result,ExecMainStatus,ExecMainExitTimestamp",
+                        unit=unit)
+        details = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
+    except ControlError:
+        details = {}
+    return {"service": state.get("active", "unknown"),
+            "result": details.get("Result", "unknown"),
+            "exitCode": details.get("ExecMainStatus", ""),
+            "finishedAt": details.get("ExecMainExitTimestamp", ""),
+            "sources": counts, "database": db.is_file()}
 
 
 def knowledge_refresh(install):
