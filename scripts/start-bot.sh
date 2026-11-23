@@ -80,10 +80,12 @@ if [[ -n "${OSAI_AI_API_KEY:-}" ]]; then
     Groq) export OSAI_GROQ_API_KEY="$OSAI_AI_API_KEY" ;;
     OpenRouter) export OSAI_OPENROUTER_API_KEY="$OSAI_AI_API_KEY" ;;
     OpenAI) export OSAI_OPENAI_API_KEY="$OSAI_AI_API_KEY" ;;
+    Gemini) export OSAI_GEMINI_API_KEY="$OSAI_AI_API_KEY" ;;
   esac
 fi
 load_provider_key groq OSAI_GROQ_API_KEY
 load_provider_key openrouter OSAI_OPENROUTER_API_KEY
+load_provider_key gemini OSAI_GEMINI_API_KEY
 load_provider_key openai OSAI_OPENAI_API_KEY
 
 # The maintenance check is repeated immediately before launch.
