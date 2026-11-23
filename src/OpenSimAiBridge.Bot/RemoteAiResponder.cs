@@ -40,6 +40,7 @@ public sealed class RemoteAiResponder : IDisposable
             ["OpenAI"] = "https://api.openai.com/v1/chat/completions",
             ["Groq"] = "https://api.groq.com/openai/v1/chat/completions",
             ["OpenRouter"] = "https://openrouter.ai/api/v1/chat/completions",
+            ["Gemini"] = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         };
 
     private readonly HttpClient client = new() { Timeout = TimeSpan.FromSeconds(20) };
@@ -71,7 +72,9 @@ public sealed class RemoteAiResponder : IDisposable
     private static bool SafePublicModel(RemoteAiProfile p) =>
         p.Provider == "Groq" ||
         (p.Provider == "OpenRouter" &&
-            (p.Model == "openrouter/free" || p.Model.EndsWith(":free", StringComparison.Ordinal)));
+            (p.Model == "openrouter/free" || p.Model.EndsWith(":free", StringComparison.Ordinal))) ||
+        (p.Provider == "Gemini" &&
+            (p.Model == "gemini-2.5-flash-lite" || p.Model == "gemini-2.5-flash"));
 
     private static bool ValidProfile(RemoteAiProfile p) =>
         p.Enabled && p.Verified && SafePublicModel(p) &&
