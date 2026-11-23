@@ -89,7 +89,7 @@ function request_control(string $action, bool $confirm = false, ?array $settings
 $requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
 $selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
 $pageRaw = $_POST['page'] ?? $_GET['page'] ?? 'dashboard';
-$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules'], true) ? $pageRaw : 'dashboard';
+$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules', 'knowledge'], true) ? $pageRaw : 'dashboard';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -145,7 +145,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'fleet_stop' || $action === 'fleet_resume') {
+        if ($action === 'knowledge_refresh') {
+            $page = 'knowledge';
+            $response = request_control('knowledge_refresh');
+            if ($response['ok'] ?? false) {
+                $message = !empty($response['result']['alreadyRunning'])
+                    ? 'Une synchronisation documentaire est déjà en cours.'
+                    : 'Synchronisation documentaire lancée en tâche indépendante.';
+            } else {
+                $error = (string) ($response['error'] ?? 'Impossible de démarrer la synchronisation.');
+            }
+        } elseif ($action === 'fleet_stop' || $action === 'fleet_resume') {
             $page = 'maintenance';
             if (($_POST['fleet_confirm'] ?? '') !== 'yes') {
                 $error = 'Confirme cette opération globale.';
@@ -303,6 +313,8 @@ $settingsResult = $authenticated ? request_control('get_settings', false, null, 
 $botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
 $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_settings', false, null, $selectedBot) : null;
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
+$kbResponse = $authenticated && $page === 'knowledge' ? request_control('knowledge_status') : null;
+$kb = is_array($kbResponse['result'] ?? null) ? $kbResponse['result'] : null;
 $selectedName = 'Avatar';
 foreach ($bots as $bot) {
     if (($bot['id'] ?? '') === $selectedBot) {
@@ -434,7 +446,7 @@ textarea{resize:vertical}
 </section>
 <?php else: ?>
 <nav class="admin-menu" aria-label="Menu principal">
-<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA'] as $p => $label): ?>
+<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA','knowledge'=>'Base de connaissances'] as $p => $label): ?>
 <a href="?page=<?= esc($p) ?>&amp;bot=<?= esc($selectedBot) ?>" <?= $page === $p ? 'aria-current="page"' : '' ?>><?= esc($label) ?></a>
 <?php endforeach ?>
 </nav>
@@ -624,6 +636,34 @@ textarea{resize:vertical}
 <button name="action" value="fleet_resume">Terminer la maintenance et relancer</button>
 </form>
 <?php endif ?>
+<?php endif ?>
+</section>
+<?php endif ?>
+<?php if ($page === 'knowledge'): ?>
+<section class="panel">
+<h2>Base de connaissances BloodMoon</h2>
+<p class="muted">Index partagé des pages publiques BloodMoon Grid, Roleplay, Marketplace et OpenSim Handbook. Les PDF du Grimoire liés au guide Roleplay sont inclus. Les discussions IM ne sont pas interrompues pendant l'indexation.</p>
+<?php if ($kb === null): ?>
+<div class="notice error">État documentaire indisponible : contrôleur à mettre à jour.</div>
+<?php else: ?>
+<p><strong>Synchronisation :</strong> <?= esc(($kb['service'] ?? '') === 'active' ? 'En cours' : 'À l’arrêt') ?></p>
+<p><strong>Fichier SQLite :</strong> <?= !empty($kb['database']) ? 'Présent' : 'Pas encore créé' ?></p>
+<table style="width:100%;text-align:left;border-spacing:0 .6rem">
+<thead><tr><th>Source</th><th>Pages / PDF</th><th>Passages</th></tr></thead>
+<tbody>
+<?php foreach (['grid'=>'BloodMoon Grid','roleplay'=>'Roleplay et PDF','marketplace'=>'Marketplace','handbook'=>'OpenSim Handbook'] as $key => $name):
+$found = null;
+foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $key) { $found = $entry; break; } } ?>
+<tr><td><?= esc($name) ?></td><td><?= (int)($found['pages'] ?? 0) ?></td><td><?= (int)($found['passages'] ?? 0) ?></td></tr>
+<?php endforeach ?>
+</tbody></table>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="knowledge">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<button name="action" value="knowledge_refresh" <?= ($kb['service'] ?? '') === 'active' ? 'disabled' : '' ?>>Actualiser l'indexation des quatre sites</button>
+</form>
+<p class="muted">Le traitement s'exécute indépendamment via systemd. Recharge cette page pour voir les compteurs. Les sources privées ne doivent pas être indexées. Cette base n'est pas encore utilisée pour répondre aux IM ; le raccordement à l'IA sera la prochaine étape.</p>
 <?php endif ?>
 </section>
 <?php endif ?>
