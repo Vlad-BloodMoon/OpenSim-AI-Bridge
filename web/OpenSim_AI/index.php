@@ -142,7 +142,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $coords[$axis] = $number;
             }
-            if ($error === '' && ($region === '' || mb_strlen($region) > 80)) {
+            if ($error === '' && ($region === '' || strlen($region) > 80)) {
                 $error = 'Nom de région invalide.';
             }
             if ($error === '') {
