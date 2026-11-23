@@ -432,8 +432,10 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 <div class="stat"><small>Sous-état</small><strong><?= esc((string) ($state['substate'] ?? 'inconnu')) ?></strong></div>
 <div class="stat"><small>Démarrage au reboot du serveur</small><strong><?= esc((string) ($state['enabled'] ?? 'inconnu')) ?></strong></div>
 <div class="stat"><small>Mode Firestorm</small><strong><?= !empty($state['maintenance']) ? 'Activé' : 'Désactivé' ?></strong></div>
+<div class="stat"><small>Mémoire RAM</small><strong><?= isset($state['resources']['memoryMb']) ? esc(number_format((float) $state['resources']['memoryMb'], 1, ',', ' ')) . ' Mo' : '—' ?></strong></div>
+<div class="stat"><small>CPU du service</small><strong><?= isset($state['resources']['cpuPercent']) ? esc(number_format((float) $state['resources']['cpuPercent'], 1, ',', ' ')) . ' %' : '—' ?></strong></div>
 </div>
-<p class="muted">L'état « active » indique que le processus fonctionne. « disabled » concerne le démarrage au reboot, pas la reconnexion réseau de l'avatar.</p>
+<p class="muted">« active » indique que le service fonctionne. La RAM représente la mémoire comptabilisée pour ce service, et le CPU sa consommation moyenne entre deux relevés (100 % = un cœur entièrement utilisé ; une valeur supérieure à 100 % est possible). Le CPU affiche « — » au premier relevé ou si les statistiques sont indisponibles. « disabled » concerne le démarrage au reboot.</p>
 <?php endif ?>
 </section>
 <section class="panel">
