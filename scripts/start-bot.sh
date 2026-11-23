@@ -33,6 +33,23 @@ if [[ -z "${OSAI_AVATAR_PASSWORD:-}" ]]; then
 fi
 export OSAI_AVATAR_PASSWORD
 
+# Optional remote-AI secret lives beside each bot's private configuration.
+# No key is printed or committed; a missing key simply disables AI.
+AI_KEY_FILE="${OSAI_AI_KEY_FILE:-$(dirname -- "$CONFIG_FILE")/ai-api-key.txt}"
+if [[ -f "$AI_KEY_FILE" ]]; then
+  if [[ ! -r "$AI_KEY_FILE" || -L "$AI_KEY_FILE" ]]; then
+    echo "AI key file permissions invalid." >&2
+    exit 2
+  fi
+  ai_key_mode=$(stat -c '%a' -- "$AI_KEY_FILE")
+  if (( (8#$ai_key_mode & 077) != 0 )); then
+    echo "AI key file must not be readable by group or others." >&2
+    exit 2
+  fi
+  IFS= read -r OSAI_AI_API_KEY < "$AI_KEY_FILE" || [[ -n "${OSAI_AI_API_KEY:-}" ]]
+  export OSAI_AI_API_KEY
+fi
+
 # The maintenance check is repeated immediately before launch.
 if [[ -e "$LOCK_FILE" ]]; then
   echo "OpenSim AI Bridge: maintenance activated; refusing to connect."
