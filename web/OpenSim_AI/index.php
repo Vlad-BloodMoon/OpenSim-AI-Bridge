@@ -22,7 +22,9 @@ header('Pragma: no-cache');
 header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: DENY');
 header('Referrer-Policy: no-referrer');
-header("Content-Security-Policy: default-src 'none'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+// Allow only this page's dedicated model-selector script; keep other inline scripts blocked.
+$scriptNonce = base64_encode(random_bytes(18));
+header("Content-Security-Policy: default-src 'none'; script-src 'nonce-" . $scriptNonce . "'; style-src 'self' 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
 
 if (!is_file(PRIVATE_CONFIG) || !is_readable(PRIVATE_CONFIG)) {
     http_response_code(503);
@@ -669,7 +671,7 @@ textarea{resize:vertical}
 </form>
 <?php endif ?>
 </section>
-<script>
+<script nonce="<?= esc($scriptNonce) ?>">
 (function () {
   'use strict';
   var provider = document.getElementById('ai-provider');
