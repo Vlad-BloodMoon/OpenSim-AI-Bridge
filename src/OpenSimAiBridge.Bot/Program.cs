@@ -280,7 +280,16 @@ do
                     {
                         var result = await ai.ReplyAsync(Guid.Parse(recipient.ToString()), message, stop.Token);
                         if (result is not null && client.Network.Connected && !stop.IsCancellationRequested)
-                            client.Self.InstantMessage(recipient, result);
+                        {
+                            // Each Firestorm IM is short enough not to be truncated.
+                            // Send the complete answer in order; don't flood the viewer.
+                            foreach (var part in ImReplyFormatter.Split(result))
+                            {
+                                if (!client.Network.Connected || stop.IsCancellationRequested) break;
+                                client.Self.InstantMessage(recipient, part);
+                                await Task.Delay(250, stop.Token);
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
