@@ -20,10 +20,11 @@ import sys
 import tempfile
 import time
 import multi_bot
+import provider_profiles
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh"))
-MAX_REQUEST = 4096
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "get_multi_ai_settings", "save_multi_ai_settings"))
+MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
 FLEET_SNAPSHOT = FLEET_ROOT / "global-maintenance-state.json"
@@ -235,6 +236,66 @@ def read_ai_settings(install):
         raise ControlError("Could not read remote AI settings") from exc
 
 
+def read_multi_ai_settings(install):
+    try:
+        path, _ = config_file(install)
+        ai = (json.loads(path.read_text(encoding="utf-8")).get("Ai") or {})
+        return {
+            "enabled": bool(ai.get("Enabled", False)),
+            "mode": ai.get("Mode", "single"),
+            "profiles": provider_profiles.existing_profiles(ai, install),
+            "maxRequestsPerHour": ai.get("MaxRequestsPerHour", 30),
+            "minSecondsBetweenRequests": ai.get("MinSecondsBetweenRequests", 15),
+            "systemPrompt": ai.get("SystemPrompt", "Tu es un assistant BloodMoon. Réponds dans la langue de la personne."),
+        }
+    except (OSError, ValueError, TypeError, KeyError, provider_profiles.ProfileError) as exc:
+        raise ControlError("Cannot read provider profiles") from exc
+
+
+def save_multi_ai_settings(install, values):
+    try:
+        ai = provider_profiles.normalize(values)
+    except provider_profiles.ProfileError as exc:
+        raise ControlError(str(exc)) from exc
+    # Each enabled provider requires its own credential. Legacy provider's secret
+    # remains valid until an explicit, safe migration is performed.
+    supplied = values["profiles"]
+    for profile in ai["Profiles"]:
+        if not profile["Enabled"] or not profile["Verified"]:
+            continue
+        provider = profile["Provider"]
+        secret_file = provider_profiles.provider_key_path(install, provider)
+        legacy_file = install / "ai-api-key.txt"
+        entered = any(p["provider"] == provider and p["apiKey"] for p in supplied)
+        existing = secret_file.is_file() and secret_file.stat().st_size > 0
+        old = provider == read_ai_settings(install)["provider"] and legacy_file.is_file()
+        if not (entered or existing or old):
+            raise ControlError("The active provider needs a private API key")
+    try:
+        path, metadata = config_file(install)
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        original = doc.get("Ai") or {}
+        # Keep legacy fields (and legacy secret) for safe rollback.
+        doc["Ai"] = {**original, **ai}
+        provider_profiles.save_keys(install, supplied, metadata.st_uid, metadata.st_gid)
+        fd, temporary = tempfile.mkstemp(prefix=".multi-ai-", dir=str(install))
+        try:
+            os.fchmod(fd, stat.S_IMODE(metadata.st_mode))
+            os.fchown(fd, metadata.st_uid, metadata.st_gid)
+            with os.fdopen(fd, "w", encoding="utf-8") as output:
+                json.dump(doc, output, indent=2, ensure_ascii=False)
+                output.write("\\n")
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary):
+                os.unlink(temporary)
+    except (OSError, ValueError, TypeError, KeyError, provider_profiles.ProfileError) as exc:
+        raise ControlError("Could not save multi-provider configuration") from exc
+    return {"saved": True, "restartRequired": True}
+
+
 def save_ai_settings(install, values):
     if not isinstance(values, dict) or set(values) != {"enabled", "provider", "model", "authorizedUuids", "publicAccess", "maxRequestsPerHour", "minSecondsBetweenRequests", "systemPrompt", "apiKey"}:
         raise ControlError("Invalid remote AI settings fields")
@@ -434,6 +495,10 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "get_multi_ai_settings":
+        return read_multi_ai_settings(install)
+    if command == "save_multi_ai_settings":
+        return save_multi_ai_settings(install, settings)
     if command == "knowledge_status":
         return knowledge_status(install)
     if command == "knowledge_refresh":
