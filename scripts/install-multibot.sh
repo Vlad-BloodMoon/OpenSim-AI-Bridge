@@ -29,6 +29,20 @@ install -d -o root -g root -m 0711 /var/lib/opensim-ai-bridge/bots
 install -o root -g root -m 0644 "$WORK/controller/control.py" /usr/local/libexec/opensim-ai-bridge/control.py
 install -o root -g root -m 0644 "$WORK/controller/multi_bot.py" /usr/local/libexec/opensim-ai-bridge/multi_bot.py
 
+# Shared knowledge indexer: does not modify the .NET bot executable.
+# Data directory exists before systemd starts the isolated refresh job.
+if [[ -f "$WORK/knowledge/knowledge_cli.py" ]]; then
+  install -d -o "$USER_NAME" -g "$USER_NAME" -m 0700 "$BASE/data"
+  install -d -o "$USER_NAME" -g "$USER_NAME" -m 0750 "$BASE/knowledge"
+  install -o "$USER_NAME" -g "$USER_NAME" -m 0750 \
+    "$WORK/knowledge/knowledge_cli.py" "$BASE/knowledge/knowledge_cli.py"
+fi
+if [[ -f "$WORK/deploy/systemd/opensim-ai-bridge-knowledge.service.example" ]]; then
+  sed -e "s|@BOT_USER@|$USER_NAME|g" -e "s|@INSTALL_DIR@|$BASE|g" \
+    "$WORK/deploy/systemd/opensim-ai-bridge-knowledge.service.example" \
+    > /etc/systemd/system/opensim-ai-bridge-knowledge.service
+fi
+
 # Keep the working bot binary untouched; install only its updated launch script.
 # This adds secure loading of a per-avatar AI key at the next bot restart.
 if [[ -f "$WORK/scripts/start-bot.sh" ]]; then
