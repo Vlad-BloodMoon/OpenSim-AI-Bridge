@@ -214,6 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'provider' => is_string($_POST['aiProvider'] ?? null) ? $_POST['aiProvider'] : '',
                     'model' => is_string($_POST['aiModel'] ?? null) ? trim($_POST['aiModel']) : '',
                     'authorizedUuids' => $uuids,
+                    'publicAccess' => ($_POST['aiPublicAccess'] ?? '') === '1',
                     'maxRequestsPerHour' => $hourly,
                     'minSecondsBetweenRequests' => $cooldown,
                     'systemPrompt' => is_string($_POST['systemPrompt'] ?? null) ? trim($_POST['systemPrompt']) : '',
@@ -629,7 +630,7 @@ textarea{resize:vertical}
 <?php if ($page === 'modules'): ?>
 <section class="panel">
 <h2>IA distante — <?= esc($selectedName) ?></h2>
-<p class="muted">Premier moteur IA pour les <strong>messages privés (IM)</strong> : OpenAI, Groq ou OpenRouter. Aucun modèle installé sur le serveur. L'IA ne répond qu'aux UUID explicitement autorisés. Les commandes ping / help / where restent utilisables sans IA.</p>
+<p class="muted">Premier moteur IA pour les <strong>messages privés (IM)</strong> : OpenAI, Groq ou OpenRouter. Aucun modèle installé sur le serveur. L'IA peut répondre à tous les résidents avec Groq si tu actives l'accès public. Sinon, seuls les UUID autorisés sont acceptés. Les commandes ping / help / where restent utilisables sans IA.</p>
 <?php if ($aiSettings === null): ?>
 <div class="notice error">Paramètres IA indisponibles : contrôleur à mettre à jour.</div>
 <?php else: ?>
@@ -656,10 +657,14 @@ textarea{resize:vertical}
 <label for="ai-key">Clé API privée</label>
 <input type="password" id="ai-key" name="aiKey" maxlength="256" autocomplete="new-password" placeholder="<?= !empty($aiSettings['hasKey']) ? 'Clé déjà enregistrée — laisser vide pour conserver' : 'Saisir la clé API du fournisseur' ?>">
 <p class="muted">La clé est enregistrée hors du répertoire Web, dans un fichier privé de cet avatar. Elle n'est jamais réaffichée.</p>
-<label for="ai-uuids">UUID autorisés (un par ligne)</label>
+<fieldset><legend>Accès aux conversations IA</legend>
+<label><input type="checkbox" id="ai-public-access" name="aiPublicAccess" value="1" <?= !empty($aiSettings['publicAccess']) ? 'checked' : '' ?>> Autoriser tous les résidents à converser en IM avec cet avatar (Groq uniquement)</label>
+<p class="muted">Tous les utilisateurs de la grille et les visiteurs Hypergrid capables d’envoyer un IM pourront solliciter Groq. Les quotas du fournisseur restent applicables. Pour OpenAI, conserve une liste d’UUID autorisés.</p>
+</fieldset>
+<label for="ai-uuids">UUID autorisés (un par ligne — facultatif si l’accès public Groq est activé)</label>
 <textarea id="ai-uuids" name="authorizedUuids" rows="4" maxlength="450" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"><?= esc(implode("\n", is_array($aiSettings['authorizedUuids'] ?? null) ? $aiSettings['authorizedUuids'] : [])) ?></textarea>
 <div class="grid">
-<div><label for="ai-hour">Limite de demandes par heure (tous utilisateurs autorisés)</label>
+<div><label for="ai-hour">Limite de demandes par heure (tous les utilisateurs confondus)</label>
 <input type="number" id="ai-hour" name="maxRequestsPerHour" min="1" max="120" required value="<?= esc((string) ($aiSettings['maxRequestsPerHour'] ?? 30)) ?>"></div>
 <div><label for="ai-delay">Délai entre demandes du même utilisateur (secondes)</label>
 <input type="number" id="ai-delay" name="minSecondsBetweenRequests" min="5" max="3600" required value="<?= esc((string) ($aiSettings['minSecondsBetweenRequests'] ?? 15)) ?>"></div>
@@ -677,6 +682,7 @@ textarea{resize:vertical}
   var provider = document.getElementById('ai-provider');
   var presets = document.getElementById('ai-model-preset');
   var model = document.getElementById('ai-model');
+  var publicAccess = document.getElementById('ai-public-access');
   if (!provider || !presets || !model) return;
   // Suggestions only; provider offerings and account permissions may change.
   var catalog = {
@@ -715,7 +721,12 @@ textarea{resize:vertical}
         ? model.value : '__custom__';
     }
   }
-  provider.addEventListener('change', function () { refresh(true); });
+  function updatePublicAccess() {
+    if (!publicAccess) return;
+    if (provider.value !== "Groq") publicAccess.checked = false;
+    publicAccess.disabled = provider.value !== "Groq";
+  }
+  provider.addEventListener('change', function () { refresh(true); updatePublicAccess(); });
   presets.addEventListener('change', function () {
     if (presets.value !== '__custom__') model.value = presets.value;
     else { model.focus(); model.select(); }
@@ -726,6 +737,7 @@ textarea{resize:vertical}
     }) ? model.value : '__custom__';
   });
   refresh(false);
+  updatePublicAccess();
 }());
 </script>
 <section class="panel"><h2>Prochaines fonctionnalités</h2>
