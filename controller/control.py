@@ -199,14 +199,18 @@ def fleet_stop(confirmed):
         if os.path.exists(tmp):
             os.unlink(tmp)
     create_lock(FLEET_LOCK)
-    failures = 0
-    for unit in units:
-        try:
-            systemctl("stop", unit=unit)
-        except ControlError:
-            failures += 1
-    if failures:
-        raise ControlError(f"Global maintenance active: {failures} service(s) could not stop")
+    # Send a single stop transaction to systemd. Stopping bots sequentially could
+    # exceed the web controller's 35-second socket timeout with many instances.
+    try:
+        result = subprocess.run(
+            ["/usr/bin/systemctl", "stop", *units],
+            text=True, capture_output=True, timeout=30, check=False,
+            env={"PATH": "/usr/bin:/bin", "LANG": "C"},
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise ControlError("Global maintenance active; stop operation timed out") from exc
+    if result.returncode:
+        raise ControlError("Global maintenance active; one or more bot services did not stop")
     return fleet_status()
 
 
