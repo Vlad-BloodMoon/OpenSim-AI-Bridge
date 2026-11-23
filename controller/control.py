@@ -247,7 +247,7 @@ def read_multi_ai_settings(install):
             ai = (json.loads((install / "appsettings.json").read_text(encoding="utf-8")).get("Ai") or {})
         return {
             "enabled": bool(ai.get("Enabled", False)),
-            "mode": ai.get("Mode", "single"),
+            "mode": ai.get("Mode", "auto"),
             "profiles": provider_profiles.existing_profiles(ai, install),
             "maxRequestsPerHour": ai.get("MaxRequestsPerHour", 30),
             "minSecondsBetweenRequests": ai.get("MinSecondsBetweenRequests", 15),
