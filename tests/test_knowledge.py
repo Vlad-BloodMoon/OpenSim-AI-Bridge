@@ -59,10 +59,10 @@ class KnowledgeTests(unittest.TestCase):
         def fake_run(argv, **kwargs):
             calls.append(argv[0])
             if "pdfinfo" in argv[0]:
-                return SimpleNamespace(returncode=0, stdout="Title: Guide\\nPages:          3\\n", stderr="")
+                return SimpleNamespace(returncode=0, stdout="Title: Guide\nPages:          3\n", stderr="")
             return SimpleNamespace(returncode=0, stdout="Règles du jeu BloodMoon " * 10, stderr="")
         with patch.object(kb.subprocess, "run", side_effect=fake_run):
-            content = kb.extract_pdf(b"%PDF-1.7\\nexample")
+            content = kb.extract_pdf(b"%PDF-1.7\nexample")
         self.assertIn("Règles du jeu", content)
         self.assertEqual(calls, ["/usr/bin/pdfinfo", "/usr/bin/pdftotext"])
 
