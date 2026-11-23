@@ -35,7 +35,7 @@ export OSAI_AVATAR_PASSWORD
 
 # Optional remote-AI secret lives beside each bot's private configuration.
 # No key is printed or committed; a missing key simply disables AI.
-AI_KEY_FILE="${OSAI_AI_KEY_FILE:-$(dirname -- "$CONFIG_FILE")/ai-api-key.txt}"
+AI_KEY_FILE="${OSAI_AI_KEY_FILE:-$INSTALL_DIR/ai-api-key.txt}"
 if [[ -f "$AI_KEY_FILE" ]]; then
   if [[ ! -r "$AI_KEY_FILE" || -L "$AI_KEY_FILE" ]]; then
     echo "AI key file permissions invalid." >&2
@@ -54,7 +54,7 @@ fi
 load_provider_key() {
   local provider="$1" variable="$2"
   local path
-  path="$(dirname -- "$CONFIG_FILE")/ai-keys/$provider.txt"
+  path="$INSTALL_DIR/ai-keys/$provider.txt"
   [[ -f "$path" ]] || return 0
   if [[ -L "$path" || ! -r "$path" ]]; then
     echo "Invalid provider credential file." >&2
@@ -75,7 +75,7 @@ load_provider_key() {
 
 # Legacy credential remains untouched and available to its original provider.
 if [[ -n "${OSAI_AI_API_KEY:-}" ]]; then
-  legacy_provider="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("Ai",{}).get("Provider",""))' "$CONFIG_FILE")"
+  legacy_provider="$(/usr/bin/python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("Ai",{}).get("Provider",""))' "$INSTALL_DIR/appsettings.json")"
   case "$legacy_provider" in
     Groq) export OSAI_GROQ_API_KEY="$OSAI_AI_API_KEY" ;;
     OpenRouter) export OSAI_OPENROUTER_API_KEY="$OSAI_AI_API_KEY" ;;
