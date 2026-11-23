@@ -258,6 +258,30 @@ fieldset{border:1px solid #3c4968;border-radius:12px;margin:1rem 0}
 legend{padding:0 .5rem}
 form{margin:0}
 footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
+
+.avatar-heading{display:flex;justify-content:space-between;gap:1rem;align-items:center;flex-wrap:wrap}
+.avatar-heading h2,.chosen-bot h2{margin:0}
+.avatar-heading p{font-size:.85rem;margin:.2rem 0 0}
+.add-link{background:#416eec;border-radius:9px;color:white;text-decoration:none;padding:.5rem .9rem;font-weight:650}
+.avatar-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.7rem;margin-top:1rem}
+.avatar-item{display:flex;align-items:center;gap:.65rem;min-width:0;background:#10172b;border:1px solid #354462;border-radius:12px;padding:.8rem;color:#e8edf9;text-decoration:none}
+.avatar-item:hover{border-color:#85a7f3}
+.avatar-item.selected{border-color:#779aff;background:#273f70}
+.avatar-dot{color:#83d2a7}
+.avatar-text{display:flex;flex-direction:column;min-width:0;flex:1}
+.avatar-text strong,.avatar-text small{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.avatar-text small{font-size:.78rem;color:#a9b5cc}
+.chosen-bot{display:flex;align-items:center;gap:.85rem;margin:1.3rem 0 .4rem;padding:0 .5rem}
+.chosen-bot h2{font-size:1.45rem}
+.chosen-bot small{font-size:.8rem}
+details.folded{padding:0}
+details.folded>summary{display:flex;justify-content:space-between;gap:1rem;align-items:center;cursor:pointer;padding:1.15rem 1.5rem;font-size:1.1rem;font-weight:650;list-style:none}
+details.folded>summary::-webkit-details-marker{display:none}
+details.folded>summary:after{content:"+";font-size:1.4rem}
+details.folded[open]>summary:after{content:"−"}
+details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;margin-left:auto}
+.folded-content{padding:0 1.5rem 1.5rem}
+@media(max-width:600px){main{margin:1.4rem auto}.avatar-list{grid-template-columns:1fr}details.folded>summary{padding:1rem}details.folded>summary small{display:none}.folded-content{padding:0 1rem 1rem}}
 </style>
 </head>
 <body>
@@ -286,22 +310,25 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 </form>
 </section>
 <?php else: ?>
+
 <section class="panel">
-<h2>Mes avatars</h2>
+<div class="avatar-heading"><div><h2>Mes avatars</h2><p class="muted">Choisis un avatar pour gérer son état et ses paramètres.</p></div><a class="add-link" href="#ajouter-avatar">+ Ajouter</a></div>
 <?php if ($bots): ?>
-<div class="actions">
+<nav class="avatar-list" aria-label="Sélection des avatars">
 <?php foreach ($bots as $bot): ?>
-<a class="bot-link <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>"
- href="?bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>"><?= esc(trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''))) ?></a>
+<a class="avatar-item <?= $selectedBot === ($bot['id'] ?? '') ? 'selected' : '' ?>" href="?bot=<?= urlencode((string) ($bot['id'] ?? 'main')) ?>" <?= $selectedBot === ($bot['id'] ?? '') ? 'aria-current="page"' : '' ?>>
+<span class="avatar-dot" aria-hidden="true">●</span><span class="avatar-text"><strong><?= esc(trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''))) ?></strong><small><?= esc((string) ($bot['region'] ?? '')) ?></small></span><span aria-hidden="true">›</span>
+</a>
 <?php endforeach ?>
-</div>
+</nav>
 <?php else: ?>
-<p class="muted">Liste des avatars indisponible : contrôleur multi-avatars à mettre à jour.</p>
+<p class="muted">Liste des avatars indisponible : contrôleur multi-avatars à vérifier.</p>
 <?php endif ?>
 </section>
-<section class="panel">
-<h2>Ajouter et connecter un avatar</h2>
-<p class="muted">Le nouvel avatar doit déjà posséder un compte sur la grille. Il utilisera le même serveur de connexion que BloodMoon AI, mais avec son propre mot de passe, sa région, ses coordonnées et son service.</p>
+<details class="panel folded" id="ajouter-avatar" <?= $error !== '' && ($_POST['action'] ?? '') === 'create_bot' ? 'open' : '' ?>>
+<summary>Ajouter et connecter un avatar <small>Prénom, nom, mot de passe, région, position</small></summary>
+<div class="folded-content">
+<p class="muted">Le compte doit déjà exister sur la grille. Chaque avatar aura ses propres paramètres et son service.</p>
 <form method="post" autocomplete="off">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
@@ -320,7 +347,18 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 </div>
 <button name="action" value="create_bot" <?= !$bots ? 'disabled' : '' ?>>Ajouter et connecter</button>
 </form>
-</section>
+</div>
+</details>
+<?php
+$selectedName = 'Avatar';
+foreach ($bots as $bot) {
+  if (($bot['id'] ?? '') === $selectedBot) {
+    $selectedName = trim((string) ($bot['firstName'] ?? '') . ' ' . (string) ($bot['lastName'] ?? ''));
+    break;
+  }
+}
+?>
+<div class="chosen-bot"><span class="avatar-dot">●</span><div><small class="muted">Tableau de bord</small><h2><?= esc($selectedName) ?></h2></div></div>
 <section class="panel">
 <h2>État du service</h2>
 <?php if ($state === null): ?>
@@ -355,6 +393,7 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <?php foreach ([['start','Démarrer',''],['stop','Arrêter','danger'],['restart','Redémarrer','warning'],['firestorm','Mode Firestorm','secondary']] as $btn): ?>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <button class="<?= esc($btn[2]) ?>" name="action" value="<?= esc($btn[0]) ?>" <?= $state === null ? 'disabled' : '' ?>><?= esc($btn[1]) ?></button>
 </form>
 <?php endforeach ?>
@@ -363,24 +402,25 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <?php if (!empty($state['maintenance'])): ?>
 <section class="panel">
 <h2>Reconnecter le bot après Firestorm</h2>
-<p class="muted">Ferme complètement Firestorm avec le compte BloodMoon AI avant de relancer le bot.</p>
+<p class="muted">Ferme complètement Firestorm avec le compte <?= esc($selectedName) ?> avant de relancer le bot.</p>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <fieldset><legend>Confirmation</legend>
 <label><input type="checkbox" name="viewer_closed" value="yes" required> Firestorm est déconnecté de ce compte.</label>
 </fieldset>
-<button name="action" value="resume" <?= $state === null ? 'disabled' : '' ?>>Réactiver BloodMoon AI</button>
+<button name="action" value="resume" <?= $state === null ? 'disabled' : '' ?>>Réactiver <?= esc($selectedName) ?></button>
 </form>
 </section>
 <?php endif ?>
-<section class="panel">
-<h2>Configuration de l'avatar</h2>
-<p class="muted">Choisis la région et les coordonnées où BloodMoon AI apparaîtra à sa prochaine connexion. La sauvegarde ne déplace pas immédiatement l'avatar connecté : un redémarrage du bot applique ces paramètres.</p>
+<details class="panel folded" id="configuration"><summary>Configuration de l'avatar <small>Région, coordonnées et comportement</small></summary><div class="folded-content">
+<p class="muted">Choisis la région et les coordonnées où <?= esc($selectedName) ?> apparaîtra à sa prochaine connexion. La sauvegarde ne déplace pas immédiatement l'avatar connecté : un redémarrage du bot applique ces paramètres.</p>
 <?php if ($botSettings === null): ?>
 <p class="muted">Les paramètres ne sont pas encore accessibles. Mets à jour le contrôleur local pour activer leur édition.</p>
 <?php else: ?>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <label for="region">Région de démarrage</label>
 <input type="text" id="region" name="region" maxlength="80" required value="<?= esc((string) ($botSettings['region'] ?? '')) ?>">
 <div class="grid" style="margin:1rem 0">
@@ -399,11 +439,8 @@ footer{color:#a9b5cc;margin:2rem 0;font-size:.85rem}
 <button name="action" value="save_settings">Enregistrer la configuration</button>
 </form>
 <?php endif ?>
-</section>
-<section class="panel">
-<h2>Prochaines fonctionnalités</h2>
-<p class="muted">FAQ multilingue · Traduction BloodMoon · Autorisations UUID · Fournisseurs IA distants. Ces modules ne sont pas encore actifs.</p>
-</section>
+</div></details>
+<p class="muted" style="font-size:.83rem;text-align:center">À venir : FAQ, traduction, autorisations UUID et fournisseurs IA distants.</p>
 <?php endif ?>
 <footer>Aucune clé API ou mot de passe avatar n'est stocké dans ce répertoire Web.</footer>
 </main>
