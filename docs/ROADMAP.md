@@ -26,8 +26,8 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 ## V0.3 — Translation & remote AI
 - [ ] Inspect and test BloodMoon Translator's actual JSON contract.
 - [ ] Create pluggable HTTP translation adapter, language preferences and cache.
-- [ ] Integrate remote OpenAI API, separate secrets and usage accounting.
-- [ ] UUID allowlists, rate limits and per-user/per-model quotas.
+- [ ] Remote IM AI: OpenAI/Groq/OpenRouter Chat Completions adapters and separate secret per bot implemented in GitHub (2026-11-23); **real provider/IM validation pending**. Usage accounting is in-memory only; persistent accounting still required.
+- [ ] UUID allowlist, per-user cooldown and per-bot hourly request limit implemented in initial code; durable per-user/per-model quotas and audit still needed.
 - [ ] Test budget-stop behavior and free-answer fallback.
 
 ## V0.4 — Grid knowledge and controlled tools
