@@ -55,3 +55,13 @@ Le formulaire Web propose désormais une liste déroulante dépendant du fournis
 ### Correction du sélecteur vide (23 novembre 2026)
 
 Le sélecteur pouvait rester vide parce que la politique Content-Security-Policy historique de la page interdisait tous les scripts. `index.php` emploie désormais un nonce CSP aléatoire par réponse HTML (`script-src 'nonce-...'`) sur son seul script de sélection, sans recourir à `unsafe-inline` pour JavaScript. La liste peut ainsi être initialisée sans élargir l'exécution d'autres scripts. Correction purement Web ; aucune modification des clés, UUID, réglages IA, service .NET ou contrôleur.
+
+## Accès public aux IM Groq (23 novembre 2026)
+
+Après validation d'une réponse IA réelle dans Firestorm, l'administration propose **« Autoriser tous les résidents à converser en IM »** sur la page Modules IA. Cette option enregistre `Ai.PublicAccess`, **désactivé par défaut** et disponible **uniquement avec le fournisseur Groq**. Un UUID autorisé reste accepté lorsque l'accès public est inactif. Avec l'accès public Groq actif, tout utilisateur, y compris un visiteur Hypergrid capable d'envoyer un IM, peut interroger le bot. Il s'agit d'un accès par IM privé avec l'avatar IA, **pas** d'une réponse automatique à tout le chat local ou de groupe.
+
+Les garde-fous existants restent : compteur partagé `MaxRequestsPerHour` (1–120) par avatar, délai `MinSecondsBetweenRequests` (5–3600 s) par utilisateur, un seul appel IA simultané par avatar, requêtes limitées en taille. Les quotas sont remis à zéro au redémarrage du service et **ne constituent pas une limite financière garantie**. La clé Groq reste privée, jamais transmise au navigateur. Le panneau désactive la case d'accès public quand un autre fournisseur est sélectionné, et le contrôleur refuse toute tentative d'accès public avec OpenAI ou OpenRouter. Le moteur .NET vérifie également la restriction Groq. Les tests de sécurité hors ligne couvrent le mode public Groq et le refus du mode public OpenAI.
+
+Déploiement : le changement concerne le Web, le contrôleur et **la DLL .NET**. Télécharger un nouvel artefact GitHub Actions validé, mettre à jour le Web et le contrôleur avec l'installateur multi-bot ; ensuite activer la maintenance générale pour arrêter les bots, sauvegarder et remplacer la DLL, terminer la maintenance, cocher l'accès public Groq, enregistrer et redémarrer uniquement l'avatar concerné. Ne pas interrompre ROBUST, Money ou les simulateurs.
+
+**Évolution future distincte :** créer deux profils fournisseurs sur un même bot (Groq public, OpenAI avec UUID privilégiés et budgets séparés). Le présent changement n'implémente **pas** encore le routage simultané entre deux API.
