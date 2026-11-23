@@ -198,6 +198,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $error = (string) ($response['error'] ?? 'Création impossible.');
                 }
             }
+        } elseif ($action === 'save_ai_settings') {
+            $page = 'modules';
+            $uuidsRaw = is_string($_POST['authorizedUuids'] ?? null) ? $_POST['authorizedUuids'] : '';
+            $uuids = array_values(array_filter(array_map('trim', preg_split('/[\\r\\n,;]+/', $uuidsRaw) ?: []), fn($item) => $item !== ''));
+            $hourly = filter_var($_POST['maxRequestsPerHour'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1, 'max_range' => 120]]);
+            $cooldown = filter_var($_POST['minSecondsBetweenRequests'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 5, 'max_range' => 3600]]);
+            if ($hourly === false || $cooldown === false) {
+                $error = 'Limites de consommation IA invalides.';
+            } else {
+                $settings = [
+                    'enabled' => ($_POST['aiEnabled'] ?? '') === '1',
+                    'provider' => is_string($_POST['aiProvider'] ?? null) ? $_POST['aiProvider'] : '',
+                    'model' => is_string($_POST['aiModel'] ?? null) ? trim($_POST['aiModel']) : '',
+                    'authorizedUuids' => $uuids,
+                    'maxRequestsPerHour' => $hourly,
+                    'minSecondsBetweenRequests' => $cooldown,
+                    'systemPrompt' => is_string($_POST['systemPrompt'] ?? null) ? trim($_POST['systemPrompt']) : '',
+                    'apiKey' => is_string($_POST['aiKey'] ?? null) ? trim($_POST['aiKey']) : '',
+                ];
+                $response = request_control('save_ai_settings', false, $settings, $selectedBot);
+                unset($settings);
+                if ($response['ok'] ?? false) {
+                    $message = 'Configuration IA sauvegardée pour cet avatar. Redémarre son service pour appliquer les changements.';
+                } else {
+                    $error = (string) ($response['error'] ?? 'Erreur de configuration IA.');
+                }
+            }
         } elseif ($action === 'save_settings') {
             $page = 'settings';
             $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
@@ -271,6 +298,8 @@ $status = $authenticated ? request_control('status', false, null, $selectedBot) 
 $state = is_array($status['result'] ?? null) ? $status['result'] : null;
 $settingsResult = $authenticated ? request_control('get_settings', false, null, $selectedBot) : null;
 $botSettings = is_array($settingsResult['result'] ?? null) ? $settingsResult['result'] : null;
+$aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_settings', false, null, $selectedBot) : null;
+$aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
 $selectedName = 'Avatar';
 foreach ($bots as $bot) {
     if (($bot['id'] ?? '') === $selectedBot) {
@@ -368,6 +397,9 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 .avatar-delete button{margin-top:.6rem}
 .confirm-line{display:flex;gap:.5rem;align-items:center;margin:.75rem 0}
 .protected-bot{display:block;padding:.4rem .3rem;font-size:.75rem}
+
+textarea,select{width:100%;padding:.75rem;border-radius:9px;border:1px solid #687491;background:#111a30;color:#fff;margin:.4rem 0 1rem;font:inherit}
+textarea{resize:vertical}
 </style>
 </head>
 <body>
@@ -593,13 +625,52 @@ details.folded>summary small{font-size:.77rem;color:#a9b5cc;font-weight:400;marg
 </section>
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
-<section class="panel"><h2>Modules et fonctionnalités</h2>
-<p class="muted">Cette rubrique accueillera les réglages individuels ou partagés de chaque assistant. Les fonctionnalités ci-dessous sont prévues, mais pas encore activées.</p>
+<section class="panel">
+<h2>IA distante — <?= esc($selectedName) ?></h2>
+<p class="muted">Premier moteur IA pour les <strong>messages privés (IM)</strong> : OpenAI, Groq ou OpenRouter. Aucun modèle installé sur le serveur. L'IA ne répond qu'aux UUID explicitement autorisés. Les commandes ping / help / where restent utilisables sans IA.</p>
+<?php if ($aiSettings === null): ?>
+<div class="notice error">Paramètres IA indisponibles : contrôleur à mettre à jour.</div>
+<?php else: ?>
+<form method="post" autocomplete="off">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="page" value="modules">
+<fieldset>
+<legend>Activation</legend>
+<label><input type="checkbox" name="aiEnabled" value="1" <?= !empty($aiSettings['enabled']) ? 'checked' : '' ?>> Activer les réponses IA pour cet avatar</label>
+</fieldset>
+<div class="grid">
+<div><label for="ai-provider">Fournisseur distant</label><select id="ai-provider" name="aiProvider">
+<?php foreach (['OpenAI','Groq','OpenRouter'] as $provider): ?>
+<option value="<?= esc($provider) ?>" <?= ($aiSettings['provider'] ?? '') === $provider ? 'selected' : '' ?>><?= esc($provider) ?></option>
+<?php endforeach ?>
+</select></div>
+<div><label for="ai-model">Identifiant du modèle</label>
+<input type="text" id="ai-model" name="aiModel" maxlength="100" required value="<?= esc((string) ($aiSettings['model'] ?? 'gpt-4.1-mini')) ?>"></div>
+</div>
+<label for="ai-key">Clé API privée</label>
+<input type="password" id="ai-key" name="aiKey" maxlength="256" autocomplete="new-password" placeholder="<?= !empty($aiSettings['hasKey']) ? 'Clé déjà enregistrée — laisser vide pour conserver' : 'Saisir la clé API du fournisseur' ?>">
+<p class="muted">La clé est enregistrée hors du répertoire Web, dans un fichier privé de cet avatar. Elle n'est jamais réaffichée.</p>
+<label for="ai-uuids">UUID autorisés (un par ligne)</label>
+<textarea id="ai-uuids" name="authorizedUuids" rows="4" maxlength="450" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"><?= esc(implode("\n", is_array($aiSettings['authorizedUuids'] ?? null) ? $aiSettings['authorizedUuids'] : [])) ?></textarea>
+<div class="grid">
+<div><label for="ai-hour">Limite de demandes par heure (tous utilisateurs autorisés)</label>
+<input type="number" id="ai-hour" name="maxRequestsPerHour" min="1" max="120" required value="<?= esc((string) ($aiSettings['maxRequestsPerHour'] ?? 30)) ?>"></div>
+<div><label for="ai-delay">Délai entre demandes du même utilisateur (secondes)</label>
+<input type="number" id="ai-delay" name="minSecondsBetweenRequests" min="5" max="3600" required value="<?= esc((string) ($aiSettings['minSecondsBetweenRequests'] ?? 15)) ?>"></div>
+</div>
+<label for="ai-prompt">Consignes de l'assistant</label>
+<textarea id="ai-prompt" name="systemPrompt" rows="4" maxlength="600" required><?= esc((string) ($aiSettings['systemPrompt'] ?? '')) ?></textarea>
+<p class="muted">Un fournisseur peut facturer ses requêtes. Les limites horaires sont des garde-fous applicatifs, pas un plafond de facturation garanti. Les IM autorisés sont transmis au fournisseur choisi.</p>
+<button name="action" value="save_ai_settings">Enregistrer l'IA pour <?= esc($selectedName) ?></button>
+</form>
+<?php endif ?>
+</section>
+<section class="panel"><h2>Prochaines fonctionnalités</h2>
 <div class="module-grid">
-<div class="stat"><strong>FAQ et base de connaissances</strong><small>Réponses éditables, documents, comportement par bot</small></div>
-<div class="stat"><strong>Traduction</strong><small>Intégration de l'API de traduction BloodMoon</small></div>
-<div class="stat"><strong>IA distante</strong><small>Fournisseurs et quotas propres à chaque avatar</small></div>
-<div class="stat"><strong>Autorisations et journaux</strong><small>UUID autorisés, historique et diagnostic</small></div>
+<div class="stat"><strong>FAQ et base de connaissances</strong><small>Réponses éditables et documents par bot</small></div>
+<div class="stat"><strong>Traduction BloodMoon</strong><small>Langue et traduction des conversations</small></div>
+<div class="stat"><strong>Historique et budgets</strong><small>Journal et plafonds persistants par fournisseur</small></div>
 </div></section>
 <?php endif ?>
 <?php endif ?>
