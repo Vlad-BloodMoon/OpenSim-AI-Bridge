@@ -759,6 +759,9 @@ foreach (['OpenRouter' => 'openrouter/free', 'OpenAI' => 'gpt-4.1-mini'] as $pro
 </fieldset>
 <h3>Priorité et configuration des moteurs</h3>
 <p class="muted">Utilise ↑ et ↓ pour changer leur ordre. Les moteurs non testés ne sont jamais utilisés. Enregistre d'abord un nouveau modèle ou une nouvelle clé, puis clique sur « Tester ». Un test réel consomme une requête API et peut être facturé si tu as activé la facturation chez le fournisseur.</p>
+<div style="display:flex;justify-content:flex-end;margin:.6rem 0">
+<button type="button" class="secondary" id="ai-add-profile">+ Ajouter un moteur</button>
+</div>
 <div id="ai-profile-list">
 <?php foreach ($profiles as $index => $entry): ?>
 <div class="panel ai-profile" style="margin:.7rem 0;padding:1rem" data-profile-id="<?= esc((string)($entry['id'] ?? '')) ?>">
@@ -767,6 +770,7 @@ foreach (['OpenRouter' => 'openrouter/free', 'OpenAI' => 'gpt-4.1-mini'] as $pro
 <div class="actions">
 <button type="button" class="secondary ai-up" aria-label="Monter le moteur" title="Monter">↑</button>
 <button type="button" class="secondary ai-down" aria-label="Descendre le moteur" title="Descendre">↓</button>
+<button type="button" class="secondary ai-remove" aria-label="Retirer ce moteur" title="Retirer">×</button>
 </div>
 </div>
 <input type="hidden" data-field="id" value="<?= esc((string)($entry['id'] ?? '')) ?>">
@@ -821,10 +825,52 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
       card.querySelector('.ai-down').disabled = i === cards.length - 1;
     });
   }
+  var add = document.getElementById('ai-add-profile');
+  if (add) add.addEventListener('click', function () {
+    if (list.querySelectorAll('.ai-profile').length >= 8) {
+      alert('Maximum huit moteurs par avatar.');
+      return;
+    }
+    var next = document.createElement('div');
+    var id = 'profile-' + Math.random().toString(36).slice(2, 10);
+    next.className = 'panel ai-profile';
+    next.style.cssText = 'margin:.7rem 0;padding:1rem';
+    next.dataset.profileId = id;
+    next.innerHTML = '<div style="display:flex;gap:.7rem;align-items:center;justify-content:space-between">' +
+      '<strong class="ai-rank"></strong><div class="actions">' +
+      '<button type="button" class="secondary ai-up" aria-label="Monter">↑</button> ' +
+      '<button type="button" class="secondary ai-down" aria-label="Descendre">↓</button> ' +
+      '<button type="button" class="secondary ai-remove" aria-label="Retirer">×</button>' +
+      '</div></div>' +
+      '<input type="hidden" data-field="id" value="' + id + '">' +
+      '<div class="grid"><div><label>Fournisseur</label>' +
+      '<select data-field="provider" class="ai-provider-select">' +
+      '<option value="Groq">Groq</option><option value="OpenRouter">OpenRouter</option>' +
+      '<option value="OpenAI">OpenAI</option></select></div>' +
+      '<div><label>Modèle</label><input type="text" data-field="model" required maxlength="100" value="openai/gpt-oss-20b"></div></div>' +
+      '<label><input type="checkbox" data-field="enabled" value="1"> Activer dans la chaîne</label>' +
+      '<label>Clé API (facultative si déjà enregistrée pour le fournisseur)</label>' +
+      '<input type="password" data-field="apiKey" maxlength="256" autocomplete="new-password" placeholder="Clé privée">' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:1rem">' +
+      '<small class="muted">○ À tester avant activation publique</small>' +
+      '<button class="secondary ai-test-button" name="action" value="test_multi_ai_profile:' + id + '">Tester le modèle enregistré</button>' +
+      '</div>';
+    list.appendChild(next);
+    renumber();
+  });
   list.addEventListener('click', function (event) {
-    var btn = event.target.closest('button.ai-up, button.ai-down');
+    var btn = event.target.closest('button.ai-up, button.ai-down, button.ai-remove');
     if (!btn) return;
     var card = btn.closest('.ai-profile');
+    if (btn.classList.contains('ai-remove')) {
+      if (list.children.length <= 1) {
+        alert('Il faut conserver au moins un profil.');
+        return;
+      }
+      card.remove();
+      renumber();
+      return;
+    }
     if (btn.classList.contains('ai-up') && card.previousElementSibling)
       list.insertBefore(card, card.previousElementSibling);
     else if (btn.classList.contains('ai-down') && card.nextElementSibling)
