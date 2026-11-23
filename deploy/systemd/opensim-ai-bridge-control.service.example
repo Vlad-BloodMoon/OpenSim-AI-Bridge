@@ -23,7 +23,8 @@ ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
 LockPersonality=true
-RestrictAddressFamilies=AF_UNIX
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+# Only the fixed allowlisted test request uses TCP to remote model APIs.
 StandardOutput=journal
 StandardError=journal
 
