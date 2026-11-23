@@ -38,8 +38,9 @@
 - [Web administration V0.2 design / Conception administration Web](docs/WEB_ADMIN_V02_FR.md)
 - [Systemd and Firestorm-mode setup / Service et mode Firestorm](docs/SERVICE_SYSTEMD_V02_FR.md)
 - [Web administration V0.2 install (FR) / Installation de l'administration Web](docs/WEB_INSTALL_V02_FR.md)
+- [Multi-bot Web preview / Gestion de plusieurs avatars](docs/MULTI_BOT_V02_FR.md)
 
-The repository now contains an **experimental PHP Web dashboard** and a restricted local controller, **not yet deployed or validated on BloodMoon**. It still has **no AI, database adapter or translation yet**. It has passed first BloodMoon grid tests but is **not production-ready**; stop/restart control and safe Firestorm handoff are V0.2 priorities.
+The initial PHP dashboard and local controller have been deployed on BloodMoon; live presence and web configuration updates were validated on 23 November 2026. **Multi-bot creation and independent systemd instances are now implemented as a preview but not yet deployed or grid-tested.** It still has **no AI, database adapter or translation yet**. It has passed first BloodMoon grid tests but is **not production-ready**; stop/restart control and safe Firestorm handoff are V0.2 priorities.
 
 ## Initial milestone / Premier jalon
 
