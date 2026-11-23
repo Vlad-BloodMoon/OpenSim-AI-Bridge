@@ -13,6 +13,7 @@ import pwd
 import re
 import uuid
 import socket
+import sqlite3
 import struct
 import subprocess
 import sys
@@ -21,7 +22,7 @@ import time
 import multi_bot
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh"))
 MAX_REQUEST = 4096
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -381,10 +382,49 @@ def fleet_resume(confirmed, legacy_install):
     return fleet_status()
 
 
+def knowledge_status(install):
+    unit = "opensim-ai-bridge-knowledge.service"
+    state = service_state(unit)
+    db = install / "data" / "bloodmoon_knowledge.db"
+    counts = []
+    if db.is_file():
+        try:
+            with sqlite3.connect(f"file:{db}?mode=ro", uri=True, timeout=2) as conn:
+                counts = [
+                    {"source": source, "pages": pages, "passages": passages}
+                    for source, pages, passages in conn.execute("""
+                        SELECT source, count(*),
+                        (SELECT count(*) FROM knowledge_passages p WHERE p.source=d.source)
+                        FROM knowledge_pages d GROUP BY source ORDER BY source
+                    """).fetchall()
+                ]
+        except (sqlite3.Error, OSError):
+            counts = []
+    return {"service": state.get("active", "unknown"), "sources": counts, "database": db.is_file()}
+
+
+def knowledge_refresh(install):
+    unit = "opensim-ai-bridge-knowledge.service"
+    if service_state(unit)["active"] == "active":
+        return {"alreadyRunning": True}
+    # Start asynchronous, independent systemd service, never in the Web worker.
+    result = subprocess.run(
+        ["/usr/bin/systemctl", "start", "--no-block", unit],
+        capture_output=True, text=True, timeout=10, check=False,
+        env={"PATH": "/usr/bin:/bin", "LANG": "C"})
+    if result.returncode:
+        raise ControlError("Knowledge refresh service could not be started")
+    return {"started": True}
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
+    if command == "knowledge_status":
+        return knowledge_status(install)
+    if command == "knowledge_refresh":
+        return knowledge_refresh(install)
     if command == "fleet_status":
         return fleet_status()
     if command == "fleet_stop":
