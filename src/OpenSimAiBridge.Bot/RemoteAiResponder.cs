@@ -293,6 +293,7 @@ public sealed class RemoteAiResponder : IDisposable
     public void Dispose()
     {
         requestGate.Dispose();
+        translator.Dispose();
         client.Dispose();
     }
 }
