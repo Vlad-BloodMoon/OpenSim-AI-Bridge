@@ -1,85 +1,119 @@
 # OpenSim AI Bridge
 
-**An extensible AI-avatar bridge and web administration platform for OpenSimulator.**
+**A headless OpenSimulator avatar with remote AI, a private knowledge base, multilingual retrieval and an authenticated Web control panel.**
 
-**FR** — Projet open source visant à connecter un véritable avatar autonome à une grille OpenSimulator, sans viewer graphique, et à proposer une interface Web de gestion, un moteur de réponses gratuites, la traduction, des services de grille contrôlés et l'IA distante pour les utilisateurs autorisés.
+**FR —** Une plateforme pour connecter et administrer un ou plusieurs avatars OpenSimulator sans viewer, leur permettre de répondre aux résidents grâce à des modèles IA distants et de retrouver les informations de votre grille. **Aucun modèle IA local** n'est nécessaire.
 
-**EN** — Open-source project to connect a real autonomous avatar to OpenSimulator without a graphical viewer, with web administration, configurable rule-based answers, translation, controlled grid integrations, and remote AI access for authorized users.
+**EN —** A platform for running and managing one or more headless OpenSimulator avatars, answering residents with remote AI models and retrieving your grid's documentation. **No local LLM inference** is required.
 
-> **Status / État (24 November 2026):** BloodMoon deployment and live provider validation are underway. The .NET multi-provider routing and shared SQLite provider-attempt limiter are implemented; full automatic failover under real quota exhaustion and long-running reliability are **not yet proven in production**. Not a production-ready general release.
+> **Statut / Status — 24 November 2026:** active BloodMoon pilot, with a successfully built Linux x64 artifact and automated regression tests. **Not yet a general-purpose production release.** Features marked *planned* below must not be interpreted as available. Provider quotas, privacy, deployment hardening and OpenSimulator compatibility must be evaluated on each installation.
 
-## Key principles / Principes
+## What it does / Fonctionnalités
 
-- **OpenSimulator-first:** initially tested against OpenSimulator 0.9.3.1; compatibility must be validated.
-- **Real avatar:** headless client using [LibreMetaverse](https://github.com/cinderblocks/libremetaverse), with IM, local chat and resilient login.
-- **Remote AI only:** no Ollama or local language model; optional remote Groq, Gemini and OpenRouter APIs with distinct credentials, subject to provider quotas and billing settings.
-- **Free answer engine:** admin-editable questions, triggers, multilingual answers, variables, fallback and unanswered-question queue without paid AI calls.
-- **Translation:** configurable HTTP provider with an adapter for BloodMoon's Translator API; exact request/response contract to be confirmed from source.
-- **Web console:** online status, region/position, permissions, answer editor, usage limits and audit logs.
-- **ROBUST integration:** secure, allow-listed read-only operations first; do not expose raw SQL or administrative execution to language models.
-- **Portable:** BloodMoon is the reference environment, not a hardcoded dependency.
-- **Safety:** private credentials, explicit profile verification, approved public models, request throttling and a shared per-provider attempt cap. No guarantee that provider-side quotas or paid usage are fully measurable or prevented by the application.
+| Capability | Current status |
+| --- | --- |
+| Headless .NET 8 avatar using LibreMetaverse, IM, local chat, login/reconnect | Implemented; basic BloodMoon login/IM tested |
+| Authenticated PHP administration over HTTPS and a restricted local Unix socket | Implemented and used on BloodMoon |
+| Multiple avatar configurations, systemd services, maintenance and Firestorm mode | Implemented; not all multi-avatar combinations validated in-world |
+| Remote Groq, OpenRouter and Gemini models with configurable priority and fallback | Implemented; some provider probes validated live; quota-exhaustion failover still needs a live end-to-end test |
+| Persistent shared SQLite quota for attempted provider requests; per-resident cooldown | Implemented; **not** a provider-side token/cost/billing limit |
+| SQLite FTS5 documentation retrieval (BloodMoon Grid, Roleplay, Marketplace, OpenSim Handbook) | Implemented; includes local TXT folders with automated indexing |
+| Azure translation of questions for documentary retrieval, via a separate BloodMoon PHP gateway | Implemented and tested against the existing Azure service on BloodMoon |
+| Admin-editable protected terms, synonyms and knowledge categories | Implemented; shared private JSON, read again on each request |
+| Curated FAQ editor, unanswered-question review queue, grid/ROBUST tools | **Planned** |
+| Autonomous movement, WebRTC voice and Hypergrid travel | **Planned / research** |
+
+The bot uses **the resident's original message** for the AI answer and adds an Azure-translated version for searching documentation. Azure translation does not guarantee that domain-specific terms are translated correctly; the editable protected vocabulary helps retrieval retain names such as *Freeland*, *HUD* or *Hypergrid*. It is not a universal translation glossary.
+
+## Architecture / Architecture
+
+```text
+OpenSimulator login + IM/local chat
+             |
+      Headless .NET 8 avatar(s) (LibreMetaverse)
+             |
+   Authorization, throttling and short per-resident context
+             |
+    +--------+---------------+
+    |                        |
+ SQLite FTS5 knowledge   Remote AI router
+    |                    Groq / OpenRouter / Gemini
+    +--------+---------------+
+             |
+   IM reply in the resident's language
+
+Admin browser (HTTPS)
+      |
+Authenticated PHP Web console
+      |
+Restricted Unix-socket controller (systemd, settings, index jobs)
+      |
+Protected files + shared bot configuration
+
+Question -> dedicated PHP translation gateway -> existing Azure Translator
+          (for knowledge retrieval, not general IM translation)
+```
+
+**BloodMoon is the reference deployment, not a plug-and-play hosted service.** The included Azure translation gateway relies on a pre-existing, private BloodMoon Translator configuration. For another grid, adapt or disable that optional integration. Never commit or publish your API tokens, avatar passwords, IM history, private indexes or SQLite data.
+
+## Getting started / Démarrage
+
+1. Read the [installation instructions (FR)](docs/INSTALLATION_V01_FR.md) and [architecture](docs/ARCHITECTURE.md). Use a **test avatar and test region** first.
+2. Configure `Grid.LoginUri`, avatar identity and starting location in a **private** `appsettings.json`, using [the example](config/appsettings.example.json). Store the avatar password outside Git and supply it using the documented launcher.
+3. Build the .NET 8 project or retrieve the **successful Linux x64 artifact** from [GitHub Actions](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/actions). The artifacts are framework-dependent and require the .NET 8 runtime.
+4. For Web management and multiple avatars, read [Web setup](docs/WEB_INSTALL_V02_FR.md) and [multi-avatar operations](docs/MULTI_BOT_V02_FR.md). Keep the controller on a local Unix socket, not a public network port.
+5. To use documentation, read [Knowledge / RAG](docs/BLOODMOON_KNOWLEDGE_RAG_FR.md). For remote AI, read [AI IM pilot](docs/REMOTE_AI_V03_FR.md) and [multi-provider routing](docs/MULTI_PROVIDER_ROUTING_FR.md).
+6. **Back up** binary, configuration, Web page and controller, then use maintenance before updating a running grid. Never paste `set -e` directly into an interactive SSH shell: run installation scripts in a separate Bash process.
+
+**Quick offline check / Vérification hors grille** (after compiling or extracting the artifact):
+
+```bash
+dotnet OpenSimAiBridge.Bot.dll --verify-ai-safety
+dotnet OpenSimAiBridge.Bot.dll --verify-knowledge
+dotnet OpenSimAiBridge.Bot.dll --verify-shared-quota
+```
+
+The tests do not require Firestorm or a live grid. A successful run does **not** replace in-world IM and failover verification.
+
+## Project structure / Organisation
+
+| Path | Purpose |
+| --- | --- |
+| `src/OpenSimAiBridge.Bot/` | Avatar, AI routing, translation client and FTS5 retrieval |
+| `controller/` | Restricted local administration, bot registry, providers, protected vocabulary |
+| `web/OpenSim_AI/` | PHP Web administration, authentication and forms |
+| `knowledge/` | Documentation indexer |
+| `deploy/php/ai-translate.php` | Optional dedicated translation gateway; keeps existing HUD/site endpoints untouched |
+| `deploy/systemd/` | Service templates |
+| `scripts/` | Launcher and operational installation helpers |
+| `tests/` | Python regression tests |
+| `docs/` | Technical setup, specifications, progress and limitations |
+
+## Operational notes / Points importants
+
+- No Ollama, no local LLM, no unconditional use of paid APIs.
+- Model validation in the Web UI **does not prove** conversation-level fallback during a real 429 or exhausted quota.
+- The shared SQLite limit counts attempts; it cannot guarantee a provider's external token limits, billing status or pricing.
+- Knowledge pages, PDFs and resident messages are **untrusted input**. The assistant is not granted unrestricted shell, SQL or ROBUST access.
+- Authentication, secret permissions, HTTPS, usage rules and resident privacy remain the **operator's responsibility**. Sending text to remote AI/translation providers may involve personal data.
+- In-world voice, a visual viewer, a free-answer rule editor and ROBUST administration are **not delivered features** in this repository.
 
 ## Documentation / Documentation
 
-- [Cahier des charges (FR)](docs/CAHIER_DES_CHARGES_FR.md)
-- [Requirements (EN)](docs/REQUIREMENTS_EN.md)
-- [Architecture](docs/ARCHITECTURE.md)
-- [Roadmap](docs/ROADMAP.md)
-- [Security policy](SECURITY.md)
-- [Example configuration](config/appsettings.example.json)
-- [Avatar password file template / Modèle de fichier mot de passe](bot-password.example.txt) — never commit the real `bot-password.txt`
+- [Overview of the implemented architecture](docs/ARCHITECTURE.md)
+- [Project status and roadmap](docs/ROADMAP.md)
+- [Installation (FR)](docs/INSTALLATION_V01_FR.md)
+- [Web installation / administration (FR)](docs/WEB_INSTALL_V02_FR.md)
+- [Multi-avatar operations (FR)](docs/MULTI_BOT_V02_FR.md)
+- [Remote AI and provider routing (FR)](docs/MULTI_PROVIDER_ROUTING_FR.md)
+- [Knowledge, Azure and editable vocabulary (FR)](docs/BLOODMOON_KNOWLEDGE_RAG_FR.md)
+- [Initial requirements (FR)](docs/CAHIER_DES_CHARGES_FR.md) and [initial requirements (EN)](docs/REQUIREMENTS_EN.md) — **historical specifications**, not current feature checklists
+- [Security](SECURITY.md)
 
-## First experimental client / Premier client expérimental
+## Contributing / Contribution
 
-- [Source .NET 8](src/OpenSimAiBridge.Bot/Program.cs)
-- [Installation FR and first test](docs/INSTALLATION_V01_FR.md)
-- [Verified BloodMoon V0.1 tests / Compte rendu des tests](docs/TESTS_2026-11-20_FR.md)
-- [Web administration V0.2 design / Conception administration Web](docs/WEB_ADMIN_V02_FR.md)
-- [Systemd and Firestorm-mode setup / Service et mode Firestorm](docs/SERVICE_SYSTEMD_V02_FR.md)
-- [Web administration V0.2 install (FR) / Installation de l'administration Web](docs/WEB_INSTALL_V02_FR.md)
-- [Multi-bot Web preview / Gestion de plusieurs avatars](docs/MULTI_BOT_V02_FR.md)
-- [Remote AI IM pilot / IA distante pour les IM](docs/REMOTE_AI_V03_FR.md)
-- [Multi-provider routing / Routage multi-fournisseurs (FR)](docs/MULTI_PROVIDER_ROUTING_FR.md)
+Bug reports, documentation fixes and tested patches are welcome. Include the OpenSimulator version, relevant **redacted** logs, reproduction steps and expected behavior. Do not paste secrets, resident private messages or identifying data in public issues.
 
-## Current BloodMoon deployment / Déploiement actuel (24 November 2026)
+**License / Licence:** no explicit open-source license has been selected yet. The source is visible, but **open-source reuse rights are not granted by a license at this time**. Before publishing a licensed release, verify third-party dependencies and add the corresponding `LICENSE` file.
 
-**FR :** Le tableau de bord PHP, le contrôleur et le module IA distant sont utilisés sur BloodMoon. Les tests administrateur ont validé notamment Groq `openai/gpt-oss-20b` (modèle principal), Groq `openai/gpt-oss-120b` et Gemini `gemini-3.5-flash-lite` ; un test de validation ne prouve **pas** à lui seul un relais automatique en conversation IM. OpenRouter a également passé une validation, sans modèle précisé ici. Les anciens identifiants Groq `llama-3.3-70b-versatile` et `llama-3.1-8b-instant` ont renvoyé HTTP 404 dans l'administration ; ne pas les présenter comme profils fonctionnels.
-
-**EN:** The web admin/controller and remote AI module are in use on BloodMoon. Admin-side model checks succeeded for the named Groq/Gemini models above; this is **not** evidence of a live IM failover during a provider quota outage. Actual installed configuration, enabled profiles and provider billing must be checked on the host.
-
-### How routing works / Fonctionnement du routage
-
-- The **global** `config/multi-ai.json` defines an ordered profile list shared by all AI-enabled avatars; API keys are separate in `ai-keys/`. Each avatar has its own AI enable switch.
-- In `auto` mode, the .NET `RemoteAiResponder` tries the next *enabled, verified, publicly eligible* profile if the current profile fails, times out, produces an empty response, has a blocked local quota, or returns a non-success HTTP status. In `single` mode there is **no** automatic fallback.
-- `SharedProviderQuota` stores admissions in `data/ai-provider-quotas.db`: up to **30 attempted requests per provider per UTC hour**, shared by all avatars (and constrained further by the configured application limit). **Two Groq models share this Groq bucket**, rather than receiving 30 each. Provider-imposed token, minute, daily and billing quotas are **not** directly read or guaranteed by this limit.
-- A failed profile is temporarily skipped **in the current bot process**, then retried after its cooldown. The current route does **not** call `SharedProviderQuota.RecordCooldown`; therefore it does **not** persist provider-wide error cooldowns, despite the method existing in the quota class. This distinction matters when testing.
-- No automatic paid-provider activation is intended. Administrator validation, key presence, enable state and eligibility checks are all necessary. A configured Gemini/OpenRouter fallback must also be enabled and the global mode set to `auto`.
-
-**Verification still required / À tester :** actual IM reply after the primary model returns 429, fallback to the next Groq model, fallback across providers, recovery after cooldown, concurrency and full depletion behavior. Use a controlled test, keep the working Groq model and credentials intact, and do not interpret a green admin validation as an integration test.
-
-There is no completed grid-database adapter or translation integration. See the routing document for migration notes and security limitations.
-
-## Avatar login location / Position de connexion de l'avatar
-
-**FR :** La page **Configuration** permet de choisir « Région et coordonnées personnalisées » (comportement existant) ou « Dernier emplacement enregistré sur la grille ». En mode dernier emplacement, le bot envoie `login.Start = "last"` via LibreMetaverse : le service de connexion OpenSimulator résout alors la dernière région et position enregistrées pour cet avatar. Aucune copie de la position du tableau de bord ni lecture directe de ROBUST n'est nécessaire. Les coordonnées manuelles restent enregistrées pour un éventuel retour au mode personnalisé. Les configurations sans propriété `StartLocation.Mode` continuent en mode région. Le changement est appliqué **au prochain démarrage du bot**, pas immédiatement.
-
-**EN:** The bot settings page can use fixed region/coordinates or OpenSimulator's native last-location login (`login.Start = "last"`). Last location is resolved by the grid login service, not by locally caching dashboard coordinates. Existing configurations keep fixed-region behavior. A bot restart is required after changing settings.
-
-**Status:** Implemented in repository source; GitHub Actions and live OpenSimulator reconnection should be verified before deployment.
-
-## Initial milestone / Premier jalon
-
-A headless avatar logs in, appears in a configured region, receives an IM, replies without an AI request, exposes health/location to the Web API and reconnects after disconnection. Test off-production before enabling on the BloodMoon welcome region.
-
-## References / Références
-
-- [LibreMetaverse](https://github.com/cinderblocks/libremetaverse)
-- [OpenSimulator](http://opensimulator.org/)
-- [OpenSim Handbook](https://github.com/Vlad-BloodMoon/OpenSim_Handbook)
-
-## Contributing / Contribuer
-
-Feature requests, corrections and technical reviews are welcome. Please do not commit passwords, access tokens, grid credentials, database dumps or private chat logs.
-
-**License / Licence:** to be selected after verifying third-party compatibility; until then, no explicit reuse license is granted.
+Maintainer / Dépôt : [Vlad-BloodMoon](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge).
