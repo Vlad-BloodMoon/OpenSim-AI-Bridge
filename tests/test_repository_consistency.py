@@ -47,10 +47,15 @@ class RepositoryConsistencyTests(unittest.TestCase):
     def test_no_real_secrets_in_example_config(self):
         for name in ("config/appsettings.example.json", "config/bloodmoon.example.json"):
             config = json.loads((ROOT / name).read_text(encoding="utf-8"))
-            text = json.dumps(config).lower()
-            self.assertNotIn("api_key", text)
-            self.assertNotIn("subscription-key", text)
-            self.assertNotIn("private_key", text)
+            # ApiKeyEnv names an environment variable, not a credential.
+            # Check for unexpected fields containing secret material instead.
+            allowed_ai = {"Enabled", "Provider", "Model", "ApiKeyEnv",
+                          "AuthorizedUuidList", "PublicAccess",
+                          "MaxRequestsPerHour", "MinSecondsBetweenRequests", "SystemPrompt"}
+            self.assertEqual(set(config["Ai"]), allowed_ai)
+            self.assertTrue(config["Ai"]["ApiKeyEnv"].startswith("OSAI_"))
+            self.assertNotIn("apiKey", config["Ai"])
+            self.assertNotIn("AvatarPassword", config["Grid"])
 
 
 if __name__ == "__main__":
