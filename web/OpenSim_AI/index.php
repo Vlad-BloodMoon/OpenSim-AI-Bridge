@@ -157,7 +157,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'domain' => is_string($_POST['domain'] ?? null) ? $_POST['domain'] : ''
                 ];
             } else {
-                $values = ['term' => $term];
+                $values = ['term' => is_string($_POST['previous'] ?? null) ? trim($_POST['previous']) : ''];
             }
             $response = request_control($action, false, $values, 'main');
             if ($response['ok'] ?? false) {
