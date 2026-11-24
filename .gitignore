@@ -22,6 +22,22 @@ maintenance.lock
 *.pfx
 *.key
 
+# Private provider and gateway tokens: never commit
+ai-api-key.txt
+**/ai-api-key.txt
+ai-keys/
+**/ai-keys/
+# Runtime-generated, potentially site-specific private configuration
+config/multi-ai.json
+config/translation.json
+config/knowledge-terms.json
+**/config/multi-ai.json
+**/config/translation.json
+**/config/knowledge-terms.json
+# Private PHP configuration
+web-admin.php
+**/web-admin.php
+
 # Logs/data
 logs/
 data/
