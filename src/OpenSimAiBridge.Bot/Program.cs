@@ -11,6 +11,40 @@ CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
 // Offline regression test: run in CI without connecting to the grid or reading secrets.
+if (args.Length == 1 && args[0] == "--verify-welcome")
+{
+    var settings = new ProximityWelcomeOptions { Enabled = true, RadiusMeters = 15, RepeatDelayMinutes = 30 };
+    var welcome = new ProximityWelcome(settings);
+    var time = DateTimeOffset.UtcNow;
+    var selfId = Guid.NewGuid();
+    var first = UUID.Random();
+    var second = UUID.Random();
+    var at = new Vector3(128, 128, 25);
+    IReadOnlyDictionary<UUID, Vector3> snapshot(params (UUID id, Vector3 pos)[] entries) =>
+        entries.ToDictionary(x => x.id, x => x.pos);
+
+    if (welcome.Observe(time, selfId, at, snapshot((first, new Vector3(130, 128, 25)))).Count != 0 ||
+        welcome.Observe(time.AddSeconds(9), selfId, at, snapshot((first, new Vector3(130, 128, 25)))).Count != 0 ||
+        welcome.Observe(time.AddSeconds(10), selfId, at, snapshot((first, new Vector3(130, 128, 25)),
+            (second, new Vector3(140, 128, 25)))).Count != 1 ||
+        welcome.Observe(time.AddSeconds(20), selfId, at, snapshot((second, new Vector3(140, 128, 25)))).Count != 0 ||
+        welcome.Observe(time.AddSeconds(25), selfId, at, snapshot((second, new Vector3(140, 128, 25)))).Count != 0 ||
+        welcome.Observe(time.AddSeconds(55), selfId, at, snapshot()).Count != 0 ||
+        welcome.Observe(time.AddSeconds(90), selfId, at, snapshot((second, new Vector3(140, 128, 25)))).Count != 0 ||
+        welcome.Observe(time.AddMinutes(32), selfId, at, snapshot()).Count != 0 ||
+        welcome.Observe(time.AddMinutes(33), selfId, at, snapshot()).Count != 0 ||
+        welcome.Observe(time.AddMinutes(34), selfId, at, snapshot((second, new Vector3(140, 128, 25)))).Count != 1 ||
+        ProximityWelcome.FormatMessage("Welcome, {avatar_name}!", "Alice\\nBob") != "Welcome, Alice Bob!" ||
+        ProximityWelcome.FormatMessage("Welcome, {avatar_name}!", null) != "Welcome!" ||
+        ProximityWelcome.Valid(new ProximityWelcomeOptions { RadiusMeters = 999 }))
+    {
+        Console.Error.WriteLine("Proximity welcome safety regression.");
+        return 1;
+    }
+    Console.WriteLine("Proximity welcome checks passed.");
+    return 0;
+}
+
 if (args.Length == 1 && args[0] == "--verify-invariant-rate")
 {
     var rate = float.Parse("2.8125", CultureInfo.CurrentCulture);
@@ -470,6 +504,13 @@ if (File.Exists(translationSettings))
     }
 }
 
+var welcomeSettings = options.Bot.ProximityWelcome ?? new ProximityWelcomeOptions();
+if (welcomeSettings.Enabled && !ProximityWelcome.Valid(welcomeSettings))
+{
+    Console.Error.WriteLine("Invalid per-avatar proximity welcome settings; welcome disabled.");
+    welcomeSettings.Enabled = false;
+}
+var proximityWelcome = new ProximityWelcome(welcomeSettings);
 using var ai = new RemoteAiResponder(options.Ai);
 Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for configured IM access" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
@@ -487,6 +528,59 @@ do
         PublishHeartbeat(null, "disconnected");
         Console.WriteLine($"Connection lost: {e.Reason}");
     };
+
+    if (welcomeSettings.Enabled)
+    {
+        proximityWelcome.ResetObservation();
+        var pendingNames = new System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource<string>>();
+        client.Avatars.UUIDNameReply += (_, e) =>
+        {
+            foreach (var (id, name) in e.Names)
+            {
+                if (pendingNames.TryGetValue(Guid.Parse(id.ToString()), out var pending))
+                    pending.TrySetResult(name);
+            }
+        };
+        client.Grid.CoarseLocationUpdate += (_, e) =>
+        {
+            if (!client.Network.Connected || stop.IsCancellationRequested ||
+                !ReferenceEquals(e.Simulator, client.Network.CurrentSim))
+                return;
+            var matches = proximityWelcome.Observe(
+                DateTimeOffset.UtcNow, Guid.Parse(client.Self.AgentID.ToString()),
+                client.Self.SimPosition, e.Positions);
+            foreach (var id in matches)
+            {
+                var lookup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+                pendingNames[id] = lookup;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        client.Avatars.RequestAvatarName(UUID.Parse(id.ToString()));
+                        string? visitorName = null;
+                        try { visitorName = await lookup.Task.WaitAsync(TimeSpan.FromSeconds(3), stop.Token); }
+                        catch (TimeoutException) { } // Name optional; never expose UUID publicly.
+                        if (client.Network.Connected && !stop.IsCancellationRequested)
+                        {
+                            var text = ProximityWelcome.FormatMessage(welcomeSettings.Message, visitorName);
+                            if (!string.IsNullOrWhiteSpace(text))
+                            {
+                                client.Self.Chat(text, 0, ChatType.Normal, splitLargeMessages: false);
+                                Console.WriteLine("Sent one proximity welcome in local chat.");
+                            }
+                        }
+                    }
+                    catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"Proximity welcome failed: {ex.GetType().Name}");
+                    }
+                    finally { pendingNames.TryRemove(id, out _); }
+                }, stop.Token);
+            }
+        };
+    }
 
     if (options.Bot.EnableIM)
     {
@@ -678,4 +772,5 @@ public sealed class BotFeatures
     public bool EnableLocalChat { get; set; } = true;
     public bool EnableIM { get; set; } = true;
     public bool ReconnectEnabled { get; set; } = true;
+    public ProximityWelcomeOptions ProximityWelcome { get; set; } = new();
 }
