@@ -130,6 +130,32 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
             return 1;
         }
     }
+    // Azure can translate "plot" as "intrigue" or "scénario".
+    // Preserve the actual resident's protected vocabulary instead of trusting
+    // the translation to classify BloodMoon services.
+    var nameCases = new (string original, string french, string required, string domain)[] {
+        ("How do I join the BloodMoon grid?", "Comment rejoindre la grille ?", "grid", "grid"),
+        ("How to get a Freeland?", "Comment obtenir une intrigue ?", "freeland", "grid"),
+        ("How does the Vampire HUD work?", "Comment marche l'interface vampire ?", "hud", "roleplay"),
+        ("How do I configure Hypergrid on OpenSim?", "Comment configurer une grille ?", "hypergrid", "handbook"),
+        ("How to use the Marketplace Magic Box?", "Comment utiliser la boîte magique ?", "marketplace", "marketplace")
+    };
+    foreach (var item in nameCases)
+    {
+        var retrieval = KnowledgeSearch.BuildRetrievalQuestion(item.original, item.french);
+        var expr = KnowledgeSearch.MakeFtsExpression(retrieval);
+        if (expr is null || !expr.Contains("\\"" + item.required + "\\"", StringComparison.Ordinal) ||
+            !KnowledgeSearch.DetectDomains(retrieval).Contains(item.domain))
+        {
+            Console.Error.WriteLine("Protected vocabulary retrieval failed: " + item.original);
+            return 1;
+        }
+    }
+    if (KnowledgeSearch.BuildRetrievalQuestion("gridview", "une page") != "une page gridview")
+    {
+        Console.Error.WriteLine("Protected vocabulary matched a substring.");
+        return 1;
+    }
     var routingHits = new[] {
         new KnowledgeHit("https://bloodmoonpack.com/OpenSim_Handbook/commands-terrain-objects.php?lang=fr",
                          "OpenSimulator terrain console commands", "Technical server administration", "handbook"),
