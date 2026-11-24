@@ -346,16 +346,22 @@ def test_multi_ai_profile(install, values):
     if provider == "Gemini":
         url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent"
         payload = json.dumps({
-            "contents": [{"role": "user", "parts": [{"text": "Réponds uniquement BONJOUR."}]}],
+            "contents": [{"parts": [{"text": "Réponds BONJOUR."}]}],
             "generationConfig": {"maxOutputTokens": 768},
         }).encode()
         headers = {"x-goog-api-key": key, "Content-Type": "application/json"}
     else:
         url = endpoints[provider]
         payload = json.dumps({"model": model, "messages": [
-            {"role": "user", "content": "Reply with the single word OK."}],
-            "max_tokens": 1024 if provider == "OpenRouter" else 64}).encode()
+            {"role": "user", "content": "Say BONJOUR."}],
+            "max_tokens": 1024 if provider == "OpenRouter" else 256}).encode()
         headers = {"Authorization": "Bearer " + key, "Content-Type": "application/json"}
+
+    # Cloudflare returned 403 to Python's default User-Agent from robust-vm,
+    # while the exact same Groq key succeeded with a browser User-Agent.
+    # Send stable, explicit headers in the admin probe (no credentials logged).
+    headers["User-Agent"] = "Mozilla/5.0"
+    headers["Accept"] = "application/json"
 
     class DenyRedirects(urllib.request.HTTPRedirectHandler):
         def redirect_request(self, req, fp, code, msg, headers, newurl):
@@ -364,7 +370,7 @@ def test_multi_ai_profile(install, values):
     opener = urllib.request.build_opener(DenyRedirects())
     request = urllib.request.Request(url, data=payload, method="POST", headers=headers)
     try:
-        with opener.open(request, timeout=35 if provider in ("OpenRouter", "Gemini") else 15) as response:
+        with opener.open(request, timeout=35) as response:
             result = json.loads(response.read(16384))
             if provider == "Gemini":
                 candidates = result.get("candidates") or []
@@ -379,7 +385,15 @@ def test_multi_ai_profile(install, values):
                 raise ControlError("Provider returned no visible text (reason=" + reason[:24] + ").")
     except urllib.error.HTTPError as exc:
         # Show the HTTP status without echoing the provider response or any credentials.
-        raise ControlError("Provider HTTP " + str(exc.code) + ". Check model availability and quota.") from exc
+        reason = {
+            400: "Requête ou modèle refusé.",
+            401: "Clé API non autorisée.",
+            403: "Accès refusé par le fournisseur ou son proxy.",
+            404: "Modèle indisponible ou identifiant incorrect.",
+            429: "Quota ou débit du fournisseur atteint.",
+            503: "Fournisseur momentanément indisponible.",
+        }.get(exc.code, "Voir l’état du fournisseur.")
+        raise ControlError(f"{provider} / {model}: HTTP {exc.code}. {reason}") from exc
     except (urllib.error.URLError, TimeoutError, ValueError, TypeError, KeyError, OSError) as exc:
         raise ControlError("Provider test failed: network or invalid response.") from exc
     profile["Verified"] = True
