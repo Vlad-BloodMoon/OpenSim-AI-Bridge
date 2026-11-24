@@ -145,7 +145,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'knowledge_refresh') {
+        if ($action === 'vocabulary_upsert' || $action === 'vocabulary_delete') {
+            $page = 'knowledge';
+            $term = is_string($_POST['term'] ?? null) ? trim($_POST['term']) : '';
+            if ($action === 'vocabulary_upsert') {
+                $values = [
+                    'previous' => is_string($_POST['previous'] ?? null) ? trim($_POST['previous']) : '',
+                    'term' => $term,
+                    'aliases' => is_string($_POST['aliases'] ?? null) ? trim($_POST['aliases']) : '',
+                    'keywords' => is_string($_POST['keywords'] ?? null) ? trim($_POST['keywords']) : '',
+                    'domain' => is_string($_POST['domain'] ?? null) ? $_POST['domain'] : ''
+                ];
+            } else {
+                $values = ['term' => $term];
+            }
+            $response = request_control($action, false, $values, 'main');
+            if ($response['ok'] ?? false) {
+                $message = $action === 'vocabulary_upsert'
+                    ? 'Terme sauvegardé. Il est immédiatement disponible pour les prochaines recherches.'
+                    : 'Terme supprimé. La modification est immédiatement disponible.';
+            } else {
+                $error = (string) ($response['error'] ?? 'Impossible de modifier le vocabulaire.');
+            }
+        } elseif ($action === 'knowledge_refresh') {
             $page = 'knowledge';
             $response = request_control('knowledge_refresh');
             if ($response['ok'] ?? false) {
@@ -392,6 +414,9 @@ $multiResult = $authenticated && $page === 'modules' ? request_control('get_mult
 $multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
 $avatarAiResult = $authenticated && $page === 'modules' ? request_control('get_avatar_ai_enabled', false, null, $selectedBot) : null;
 $avatarAiEnabled = ($avatarAiResult['result']['enabled'] ?? false) === true;
+$vocabularyResponse = $authenticated && $page === 'knowledge' ? request_control('vocabulary_list') : null;
+$vocabulary = is_array($vocabularyResponse['result']['entries'] ?? null)
+    ? $vocabularyResponse['result']['entries'] : null;
 $kbResponse = $authenticated && $page === 'knowledge' ? request_control('knowledge_status') : null;
 $kb = is_array($kbResponse['result'] ?? null) ? $kbResponse['result'] : null;
 $kbRunning = in_array(($kb['service'] ?? ''), ['active', 'activating', 'reloading'], true);
@@ -812,6 +837,54 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <button name="action" value="knowledge_local_refresh" <?= in_array($localState, ['active', 'activating'], true) ? 'disabled' : '' ?>><?= in_array($localState, ['active', 'activating'], true) ? 'Indexation des fiches en cours…' : 'Réindexer les fiches TXT maintenant' ?></button>
 </form>
 <p class="muted">Les compteurs augmentent après indexation des fichiers. Actualise la page pour voir le résultat ; aucune interruption des avatars IA.</p>
+<?php endif ?>
+</section>
+<?php endif ?>
+<?php if ($page === 'knowledge'): ?>
+<section class="panel">
+<h2>Vocabulaire protégé et termes BloodMoon</h2>
+<p class="muted">Ajoute les noms qui doivent rester reconnaissables malgré une traduction Azure approximative. Chaque terme peut avoir des variantes (séparées par des virgules), des mots-clés à rechercher dans les documents et une catégorie documentaire. Les changements s'appliquent à tous les avatars, sans redémarrage ni réindexation des TXT.</p>
+<?php if ($vocabulary === null): ?>
+<div class="notice error">Vocabulaire indisponible : contrôleur local à mettre à jour.</div>
+<?php else: ?>
+<?php foreach ($vocabulary as $item): ?>
+<form method="post" class="panel" style="margin: .8rem 0">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="knowledge">
+<input type="hidden" name="previous" value="<?= esc((string)($item['term'] ?? '')) ?>">
+<div class="grid">
+<div><label>Terme protégé</label><input name="term" maxlength="60" required value="<?= esc((string)($item['term'] ?? '')) ?>"></div>
+<div><label>Variantes / synonymes (virgules)</label><input name="aliases" maxlength="900" value="<?= esc((string)($item['aliases'] ?? '')) ?>"></div>
+<div><label>Mots-clés documentaires (virgules)</label><input name="keywords" maxlength="900" required value="<?= esc((string)($item['keywords'] ?? '')) ?>"></div>
+<div><label>Catégorie documentaire</label>
+<select name="domain">
+<?php foreach ([''=>'Automatique / toutes','grid'=>'BloodMoon Grid','roleplay'=>'Roleplay','marketplace'=>'Marketplace','handbook'=>'OpenSim Handbook'] as $value => $label): ?>
+<option value="<?= esc((string)$value) ?>" <?= ($item['domain'] ?? '') === $value ? 'selected' : '' ?>><?= esc($label) ?></option>
+<?php endforeach ?>
+</select></div>
+</div>
+<div class="actions">
+<button name="action" value="vocabulary_upsert">Enregistrer les modifications</button>
+<button class="danger" name="action" value="vocabulary_delete" formnovalidate>Supprimer ce terme</button>
+</div>
+</form>
+<?php endforeach ?>
+<h3>Ajouter un terme protégé</h3>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="knowledge">
+<input type="hidden" name="previous" value="">
+<div class="grid">
+<div><label>Terme protégé</label><input name="term" maxlength="60" required placeholder="Ex. Soul Reaper"></div>
+<div><label>Variantes (séparées par des virgules)</label><input name="aliases" maxlength="900" placeholder="Ex. Reaper"></div>
+<div><label>Mots-clés documentaires</label><input name="keywords" maxlength="900" required placeholder="Ex. soul, reaper, âme"></div>
+<div><label>Catégorie documentaire</label><select name="domain">
+<option value="">Automatique / toutes</option><option value="grid">BloodMoon Grid</option><option value="roleplay">Roleplay</option><option value="marketplace">Marketplace</option><option value="handbook">OpenSim Handbook</option>
+</select></div>
+</div>
+<button name="action" value="vocabulary_upsert">Ajouter ce terme</button>
+</form>
+<p class="muted">Maximum 100 termes, 12 variantes et 16 mots-clés par entrée. Les données restent dans la configuration privée du serveur, jamais dans le dossier Web.</p>
 <?php endif ?>
 </section>
 <?php endif ?>
