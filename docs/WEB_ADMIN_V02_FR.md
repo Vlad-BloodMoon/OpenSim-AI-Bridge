@@ -1,5 +1,7 @@
 # Conception de l'administration Web — V0.2
 
+> **Spécification historique V0.2, pas un inventaire de l'interface actuelle.** Le tableau de bord sécurisé, les modules IA, les avatars multiples et la base de connaissances ont depuis été implémentés. Voir [README](../README.md) et [architecture actuelle](ARCHITECTURE.md) ; les éléments non livrés (FAQ sans IA, RBAC avancé) restent des objectifs.
+
 **État : spécification de la prochaine implémentation, pas une interface existante.**  
 **Priorité :** prendre le contrôle du bot pour permettre son utilisation dans Firestorm, puis administrer un moteur de réponses gratuites.
 
