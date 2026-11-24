@@ -10,12 +10,21 @@ Chaque avatar bot peut publier **un message de bienvenue en chat local** lorsqu'
 - **Rayon** : 5–20 mètres, valeur initiale 15 m ;
 - **Temporisation par visiteur** : 5–1440 minutes, valeur initiale 30 minutes ;
 - **Message de bienvenue**, jusqu'à 650 caractères et 700 octets UTF-8, contenant éventuellement `{avatar_name}`.
+- **Se tourner vers le visiteur lors de l'accueil** : option indépendante **désactivée par défaut**, appliquée juste avant le message local.
 
 Exemple de message par défaut :
 
 > Welcome to BloodMoon, {avatar_name}! I'm your AI assistant, here to answer questions about BloodMoon and its role-playing game. Please send me a private message (IM); I only answer questions via IM, not local chat.
 
 Le nom provient de `client.Avatars.RequestAvatarName` et du retour `UUIDNameReply` (nom classique OpenSimulator). Après trois secondes sans résultat, le bot supprime le placeholder et utilise le texte sans nom ; **aucun UUID n'est affiché dans le chat**. Le plugin Display Names et les noms personnalisés ne sont pas requis.
+
+## Orientation vers le visiteur (optionnelle)
+
+La fonction utilise `client.Self.Movement.TurnToward(target)` de LibreMetaverse. Elle consulte la **position actuelle et complète** de l'avatar ciblé dans le simulateur actif au moment d'envoyer le salut, puis oriente le corps de l'avatar bot **sans le faire marcher ni le téléporter**.
+
+Par précaution, la rotation est ignorée si le bot est assis, si le visiteur a quitté le rayon, s'il est à plus de 4 mètres de différence d'altitude, ou si les avatars se trouvent pratiquement au même endroit. La cible est projetée sur le plan horizontal du bot pour éviter d'incliner son corps vers le haut ou le bas. Les échecs de rotation ne bloquent jamais le message d'accueil.
+
+**Validation requise :** compilation et tests automatiques ne garantissent pas que la rotation soit effectivement visible dans Firestorm avec tous les simulateurs et AO/animations. Tester sur une région de BloodMoon avec l'option activée pour un seul bot. La rotation est unique par accueil, pas un suivi permanent du visiteur.
 
 ## Anti-répétition
 
