@@ -84,6 +84,24 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
         Console.Error.WriteLine("Multilingual search expansion for French editorial notes failed.");
         return 1;
     }
+    var freelandHits = new[] {
+        new KnowledgeHit("https://bloodmoonpack.com/OpenSim_Handbook/commands-terrain-objects.php?lang=fr",
+                         "Terrain console commands", "Terrain administration", "handbook"),
+        new KnowledgeHit("knowledge://grid_bloodmoon/Terrain_Gratuit_Freelands.txt",
+                         "Terrain Gratuit Freelands", "Contacter l'équipe BloodMoon", "local_grid_bloodmoon"),
+        new KnowledgeHit("https://bloodmoonpack.com/grid/land/freeland.php",
+                         "Freeland BloodMoon", "Prêt de terrains gratuits", "grid")
+    };
+    if (KnowledgeSearch.FocusFreelandSources(
+            "comment obtenir un terrain gratuit sur BloodMoon ?", freelandHits).Count != 2 ||
+        KnowledgeSearch.FocusFreelandSources(
+            "comment gérer le terrain avec la console OpenSimulator ?", freelandHits).Count != 3 ||
+        KnowledgeSearch.FocusFreelandSources(
+            "How do I get a free plot on BloodMoon?", freelandHits).Count != 2)
+    {
+        Console.Error.WriteLine("Freeland domain routing regression.");
+        return 1;
+    }
     var context = KnowledgeSearch.BuildContext(new[] {
         new KnowledgeHit("https://bloodmoonpack.com/roleplay/pages/guide.php",
                          "Grimoire", "Les vampires jouent un rôle important.", "roleplay")
