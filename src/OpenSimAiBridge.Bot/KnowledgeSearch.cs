@@ -129,8 +129,8 @@ public sealed class KnowledgeSearch
     };
 
     private static bool HasExactPhrase(string text, string phrase) =>
-        Regex.IsMatch(text, @"(?<![\\p{L}\\p{N}])" +
-            Regex.Escape(phrase) + @"(?![\\p{L}\\p{N}])",
+        Regex.IsMatch(text, @"(?<![\p{L}\p{N}])" +
+            Regex.Escape(phrase) + @"(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static string BuildRetrievalQuestion(string original, string? translated)
@@ -139,8 +139,8 @@ public sealed class KnowledgeSearch
             .Where(entry => entry.Names.Any(name => HasExactPhrase(original, name)))
             .SelectMany(entry => entry.Canonical)
             .Distinct(StringComparer.OrdinalIgnoreCase);
-        return string.Join(" ", new[] { original, translated ?? "" }
-            .Concat(canonical).Where(part => !string.IsNullOrWhiteSpace(part)));
+        return string.Join(" ", canonical.Concat(new[] { translated ?? "", original })
+            .Where(part => !string.IsNullOrWhiteSpace(part)));
     }
 
     private static string[] SearchTerms(string question)
