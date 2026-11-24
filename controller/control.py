@@ -172,6 +172,7 @@ def read_settings(install):
             "enableLocalChat": bot.get("EnableLocalChat", True),
             "reconnectEnabled": bot.get("ReconnectEnabled", True),
             "welcomeEnabled": bot.get("ProximityWelcome", {}).get("Enabled", False),
+            "welcomeFaceVisitor": bot.get("ProximityWelcome", {}).get("FaceVisitor", False),
             "welcomeRadius": bot.get("ProximityWelcome", {}).get("RadiusMeters", 15),
             "welcomeDelay": bot.get("ProximityWelcome", {}).get("RepeatDelayMinutes", 30),
             "welcomeMessage": bot.get("ProximityWelcome", {}).get("Message",
@@ -183,11 +184,13 @@ def read_settings(install):
 
 def save_settings(install, values):
     allowed = {"startMode", "region", "x", "y", "z", "enableIM", "enableLocalChat", "reconnectEnabled"}
-    welcome_fields = {"welcomeEnabled", "welcomeRadius", "welcomeDelay", "welcomeMessage"}
+    welcome_fields = {"welcomeEnabled", "welcomeRadius", "welcomeDelay", "welcomeMessage", "welcomeFaceVisitor"}
+    old_welcome_fields = welcome_fields - {"welcomeFaceVisitor"}
     allowed |= welcome_fields
     required_legacy = allowed - welcome_fields - {"startMode"}
     earlier = allowed - welcome_fields
-    if not isinstance(values, dict) or set(values) not in (allowed, earlier, required_legacy):
+    previous_welcome = allowed - {"welcomeFaceVisitor"}
+    if not isinstance(values, dict) or set(values) not in (allowed, previous_welcome, earlier, required_legacy):
         raise ControlError("Invalid settings fields")
     start_mode = values.get("startMode", "region")
     if start_mode not in ("region", "last"):
@@ -201,11 +204,13 @@ def save_settings(install, values):
     for key in ("enableIM", "enableLocalChat", "reconnectEnabled"):
         if type(values[key]) is not bool:
             raise ControlError(f"Invalid {key} flag")
-    if welcome_fields.issubset(values):
+    if old_welcome_fields.issubset(values):
+        if "welcomeFaceVisitor" in values and type(values["welcomeFaceVisitor"]) is not bool:
+            raise ControlError("Invalid face-visitor setting")
         if type(values["welcomeEnabled"]) is not bool:
             raise ControlError("Invalid welcome activation")
         if type(values["welcomeRadius"]) is not int or not 5 <= values["welcomeRadius"] <= 20:
-            raise ControlError("Welcome radius must be 5–30 metres")
+            raise ControlError("Welcome radius must be 5–20 metres")
         if type(values["welcomeDelay"]) is not int or not 5 <= values["welcomeDelay"] <= 1440:
             raise ControlError("Welcome cooldown must be 5–1440 minutes")
         welcome_text = values["welcomeMessage"]
@@ -228,8 +233,9 @@ def save_settings(install, values):
         bot["EnableIM"] = values["enableIM"]
         bot["EnableLocalChat"] = values["enableLocalChat"]
         bot["ReconnectEnabled"] = values["reconnectEnabled"]
-        if welcome_fields.issubset(values):
+        if old_welcome_fields.issubset(values):
             bot["ProximityWelcome"] = {
+                "FaceVisitor": values.get("welcomeFaceVisitor", False),
                 "Enabled": values["welcomeEnabled"],
                 "RadiusMeters": values["welcomeRadius"],
                 "RepeatDelayMinutes": values["welcomeDelay"],
