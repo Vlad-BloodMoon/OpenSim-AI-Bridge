@@ -156,6 +156,42 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
         Console.Error.WriteLine("Protected vocabulary matched a substring.");
         return 1;
     }
+    // The administrator can add a protected BloodMoon term without recompiling.
+    // The next IM reads it directly from the shared private configuration.
+    var temporaryVocabularyRoot = Path.Combine(Path.GetTempPath(),
+        "osai-vocabulary-" + Guid.NewGuid().ToString("N"));
+    var priorVocabularyRoot = Environment.GetEnvironmentVariable("OSAI_INSTALL_DIR");
+    Directory.CreateDirectory(Path.Combine(temporaryVocabularyRoot, "config"));
+    try
+    {
+        Environment.SetEnvironmentVariable("OSAI_INSTALL_DIR", temporaryVocabularyRoot);
+        var vocabularyFile = Path.Combine(temporaryVocabularyRoot, "config", "knowledge-terms.json");
+        File.WriteAllText(vocabularyFile,
+            """
+            {"entries":[{"term":"Moonstone","aliases":"Pierre de lune","keywords":"soul, potion, reaper","domain":"roleplay"}]}
+            """);
+        var editable = KnowledgeSearch.BuildRetrievalQuestion(
+            "How does Moonstone work?", "Comment fonctionne cet objet ?");
+        if (!editable.Contains("soul potion reaper", StringComparison.Ordinal) ||
+            !KnowledgeSearch.DetectDomains(editable).Contains("roleplay"))
+        {
+            Console.Error.WriteLine("Editable vocabulary was not loaded from private configuration.");
+            return 1;
+        }
+        File.WriteAllText(vocabularyFile, """{"entries":[]}""");
+        var removed = KnowledgeSearch.BuildRetrievalQuestion(
+            "How does Moonstone work?", "Comment fonctionne cet objet ?");
+        if (removed.Contains("soul potion reaper", StringComparison.Ordinal))
+        {
+            Console.Error.WriteLine("Removed vocabulary term is still active.");
+            return 1;
+        }
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable("OSAI_INSTALL_DIR", priorVocabularyRoot);
+        Directory.Delete(temporaryVocabularyRoot, recursive: true);
+    }
     var routingHits = new[] {
         new KnowledgeHit("https://bloodmoonpack.com/OpenSim_Handbook/commands-terrain-objects.php?lang=fr",
                          "OpenSimulator terrain console commands", "Technical server administration", "handbook"),
