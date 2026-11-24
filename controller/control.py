@@ -25,7 +25,7 @@ import multi_bot
 import provider_profiles
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -599,10 +599,25 @@ def knowledge_status(install):
         details = dict(line.split("=", 1) for line in raw.splitlines() if "=" in line)
     except ControlError:
         details = {}
+    local_unit = "opensim-ai-bridge-local-knowledge.service"
+    try:
+        local_state = service_state(local_unit).get("active", "unknown")
+    except ControlError:
+        local_state = "unavailable"
+    try:
+        raw_local = systemctl("show", "--property=Result,ExecMainStatus,ExecMainExitTimestamp",
+                              unit=local_unit)
+        local_details = dict(line.split("=", 1) for line in raw_local.splitlines() if "=" in line)
+    except ControlError:
+        local_details = {}
     return {"service": state.get("active", "unknown"),
             "result": details.get("Result", "unknown"),
             "exitCode": details.get("ExecMainStatus", ""),
             "finishedAt": details.get("ExecMainExitTimestamp", ""),
+            "localService": local_state,
+            "localResult": local_details.get("Result", "unknown"),
+            "localFinishedAt": local_details.get("ExecMainExitTimestamp", ""),
+            "localDirectory": "/var/www/BloodMoon/AI_Knowledge",
             "sources": counts, "database": db.is_file()}
 
 
@@ -621,6 +636,19 @@ def knowledge_refresh(install):
     return {"started": True}
 
 
+def knowledge_local_refresh(install):
+    unit = "opensim-ai-bridge-local-knowledge.service"
+    if service_state(unit)["active"] in ("active", "activating", "reloading"):
+        return {"alreadyRunning": True}
+    result = subprocess.run(
+        ["/usr/bin/systemctl", "start", "--no-block", unit],
+        capture_output=True, text=True, timeout=10, check=False,
+        env={"PATH": "/usr/bin:/bin", "LANG": "C"})
+    if result.returncode:
+        raise ControlError("Local knowledge indexing could not be started")
+    return {"started": True}
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
@@ -635,6 +663,8 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
         return knowledge_status(install)
     if command == "knowledge_refresh":
         return knowledge_refresh(install)
+    if command == "knowledge_local_refresh":
+        return knowledge_local_refresh(install)
     if command == "fleet_status":
         return fleet_status()
     if command == "fleet_stop":
