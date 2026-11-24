@@ -77,7 +77,8 @@ function request_control(string $action, bool $confirm = false, ?array $settings
         fclose($fp);
         return ['ok' => false, 'error' => 'Erreur de communication avec le contrôleur'];
     }
-    $reply = fgets($fp, 4096);
+    // The protected vocabulary list can exceed the small status-response size.
+    $reply = fgets($fp, 65536);
     fclose($fp);
     if (!is_string($reply)) {
         return ['ok' => false, 'error' => 'Le contrôleur ne répond pas'];
