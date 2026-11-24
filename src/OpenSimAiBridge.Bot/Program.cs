@@ -69,6 +69,14 @@ if (args.Length == 1 && args[0] == "--verify-ai-safety")
 // Offline proof that the shared RAG retriever remains provider-independent and safe.
 if (args.Length == 1 && args[0] == "--verify-knowledge")
 {
+    var sampleTranslation = BloodMoonTranslator.ReadTranslation(
+        """{"ok":true,"from":"en","to":"fr","translatedText":"Comment obtenir un terrain gratuit ?"}""");
+    if (sampleTranslation != "Comment obtenir un terrain gratuit ?" ||
+        BloodMoonTranslator.ReadTranslation("""{"ok":false,"translatedText":"bad"}""") is not null)
+    {
+        Console.Error.WriteLine("BloodMoon Translator gateway JSON contract mismatch.");
+        return 1;
+    }
     var expression = KnowledgeSearch.MakeFtsExpression("Malédiction vampire ?");
     if (expression is null || !expression.Contains("\"malédiction\"", StringComparison.Ordinal) ||
         KnowledgeSearch.MakeFtsExpression("!!!") is not null)
