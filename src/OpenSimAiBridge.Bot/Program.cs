@@ -34,7 +34,7 @@ if (args.Length == 1 && args[0] == "--verify-welcome")
         welcome.Observe(time.AddMinutes(32), selfId, at, snapshot()).Count != 0 ||
         welcome.Observe(time.AddMinutes(33), selfId, at, snapshot()).Count != 0 ||
         welcome.Observe(time.AddMinutes(34), selfId, at, snapshot((second, new Vector3(140, 128, 25)))).Count != 1 ||
-        ProximityWelcome.FormatMessage("Welcome, {avatar_name}!", "Alice\\nBob") != "Welcome, Alice Bob!" ||
+        ProximityWelcome.FormatMessage("Welcome, {avatar_name}!", "Alice\nBob") != "Welcome, Alice Bob!" ||
         ProximityWelcome.FormatMessage("Welcome, {avatar_name}!", null) != "Welcome!" ||
         ProximityWelcome.Valid(new ProximityWelcomeOptions { RadiusMeters = 999 }))
     {
