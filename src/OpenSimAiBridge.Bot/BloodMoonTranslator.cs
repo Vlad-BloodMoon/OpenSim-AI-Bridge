@@ -51,7 +51,7 @@ public sealed class BloodMoonTranslator : IDisposable
 
     public static string? DetectSourceLanguage(string text)
     {
-        var words = Regex.Matches(text.ToLowerInvariant(), @"[\\p{L}]+")
+        var words = Regex.Matches(text.ToLowerInvariant(), @"[\p{L}]+")
             .Select(m => m.Value)
             .ToHashSet(StringComparer.Ordinal);
         if (words.Count == 0) return null;
