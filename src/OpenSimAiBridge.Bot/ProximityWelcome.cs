@@ -5,12 +5,13 @@ using LibreMetaverse;
 namespace OpenSimAiBridge;
 
 /// <summary>
-/// Coarse location snapshots drive a bounded, per-avatar welcome state machine.
+/// Full-precision avatar object snapshots drive a bounded, per-avatar welcome state machine.
 /// No local AI inference, external API, IM, or sim-side script is required.
 /// </summary>
 public sealed class ProximityWelcomeOptions
 {
     public bool Enabled { get; set; } = false;
+    public bool FaceVisitor { get; set; } = false;
     public int RadiusMeters { get; set; } = 15;
     public int RepeatDelayMinutes { get; set; } = 30;
     public string Message { get; set; } =
@@ -57,7 +58,7 @@ public sealed class ProximityWelcome
         }
     }
 
-    /// <summary>Only the currently observed simulator's full coarse snapshot is provided.</summary>
+    /// <summary>Only full-resolution avatar positions from the current simulator are provided.</summary>
     public IReadOnlyList<Guid> Observe(
         DateTimeOffset now, Guid selfId, Vector3 selfPosition,
         IReadOnlyDictionary<UUID, Vector3> snapshot)
@@ -71,8 +72,8 @@ public sealed class ProximityWelcome
             {
                 var uuid = Guid.Parse(id.ToString());
                 if (uuid == selfId || uuid == Guid.Empty) continue;
-                // Coarse Z is quantized into four-metre steps; use XY to avoid
-                // false negatives around floors or sloping ground.
+                // Welcome distance is horizontal. A separate vertical guard is
+                // applied before turning, since rotation is visual only.
                 var dx = pos.X - selfPosition.X;
                 var dy = pos.Y - selfPosition.Y;
                 if (dx * dx + dy * dy <= radiusSquared)
