@@ -310,6 +310,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         } elseif ($action === 'save_settings') {
             $page = 'settings';
+            $startMode = is_string($_POST['startMode'] ?? null) ? $_POST['startMode'] : 'region';
+            if (!in_array($startMode, ['region', 'last'], true)) {
+                $error = 'Mode de démarrage invalide.';
+            }
             $region = is_string($_POST['region'] ?? null) ? trim($_POST['region']) : '';
             $coords = [];
             foreach (['x' => 8192, 'y' => 8192, 'z' => 4096] as $axis => $limit) {
@@ -326,6 +330,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             if ($error === '') {
                 $settings = [
+                    'startMode' => $startMode,
                     'region' => $region,
                     'x' => $coords['x'],
                     'y' => $coords['y'],
@@ -655,13 +660,19 @@ textarea{resize:vertical}
 <?php if ($page === 'settings'): ?>
 <section class="panel"><h2>Configuration de <?= esc($selectedName) ?></h2><p class="muted">Les modifications sont appliquées au prochain démarrage de cet avatar uniquement. <a href="?page=avatars&amp;bot=<?= esc($selectedBot) ?>">Choisir un autre avatar</a></p></section>
 <details class="panel folded" id="configuration" open><summary>Configuration de l'avatar <small>Région, coordonnées et comportement</small></summary><div class="folded-content">
-<p class="muted">Choisis la région et les coordonnées où <?= esc($selectedName) ?> apparaîtra à sa prochaine connexion. La sauvegarde ne déplace pas immédiatement l'avatar connecté : un redémarrage du bot applique ces paramètres.</p>
+<p class="muted">Choisis une région avec des coordonnées fixes, ou laisse OpenSimulator reconnecter <?= esc($selectedName) ?> à son dernier emplacement enregistré. Un redémarrage du bot applique le choix, sans déplacer immédiatement l'avatar connecté.</p>
 <?php if ($botSettings === null): ?>
 <p class="muted">Les paramètres ne sont pas encore accessibles. Mets à jour le contrôleur local pour activer leur édition.</p>
 <?php else: ?>
 <form method="post">
 <input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<fieldset><legend>Lieu de connexion</legend>
+<label style="margin:.6rem 0"><input type="radio" name="startMode" value="region" <?= ($botSettings['startMode'] ?? 'region') !== 'last' ? 'checked' : '' ?>> Région et coordonnées personnalisées</label>
+<label style="margin:.6rem 0"><input type="radio" name="startMode" value="last" <?= ($botSettings['startMode'] ?? 'region') === 'last' ? 'checked' : '' ?>> Dernier emplacement enregistré sur la grille</label>
+<p class="muted">En mode « Dernier emplacement », OpenSimulator utilise la dernière position connue de l'avatar. Les coordonnées ci-dessous restent mémorisées pour un éventuel retour au mode personnalisé.</p>
+</fieldset>
+<div id="manual-start-fields">
 <label for="region">Région de démarrage</label>
 <input type="text" id="region" name="region" maxlength="80" required value="<?= esc((string) ($botSettings['region'] ?? '')) ?>">
 <div class="grid" style="margin:1rem 0">
@@ -672,6 +683,21 @@ textarea{resize:vertical}
 </div>
 <?php endforeach ?>
 </div>
+</div>
+<script>
+(function () {
+    const options = document.querySelectorAll('input[name="startMode"]');
+    const fields = document.getElementById('manual-start-fields');
+    if (!fields || !options.length) return;
+    function refresh() {
+        const last = document.querySelector('input[name="startMode"]:checked')?.value === 'last';
+        fields.hidden = last;
+        fields.querySelectorAll('input').forEach(input => { input.disabled = false; });
+    }
+    options.forEach(option => option.addEventListener('change', refresh));
+    refresh();
+})();
+</script>
 <fieldset><legend>Fonctionnement</legend>
 <?php foreach (['enableIM' => 'Répondre aux IM', 'enableLocalChat' => 'Observer le chat local', 'reconnectEnabled' => 'Reconnexion automatique après déconnexion'] as $key => $label): ?>
 <label style="margin:.6rem 0"><input type="checkbox" name="<?= esc($key) ?>" value="1" <?= !empty($botSettings[$key]) ? 'checked' : '' ?>> <?= esc($label) ?></label>
