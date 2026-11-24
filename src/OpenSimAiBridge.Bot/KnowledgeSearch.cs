@@ -31,28 +31,70 @@ public sealed class KnowledgeSearch
         "des", "les", "une", "the", "and", "how", "does", "what", "about",
         "bloodmoon", "please", "merci", "est", "sont", "aux", "qui", "que",
         "cette", "cela", "suis", "leur", "leurs", "faire", "fait", "tout",
+        // Common question words (FR/EN/ES/DE/IT/PT); keep content terms.
+        "como", "cómo", "puedo", "puede", "puedes", "quiero", "obtener", "donde",
+        "dónde", "para", "por", "una", "uno", "los", "las", "del", "con",
+        "wie", "kann", "ich", "ein", "eine", "einen", "und", "der", "die", "das",
+        "bekomme", "bekommen", "erhalten", "bitte", "was", "ist",
+        "come", "posso", "ottenere", "dove", "sono", "della", "degli", "per",
+        "quero", "consigo", "conseguir", "onde", "sobre", "você", "voce",
+        "preciso", "gostaria", "que", "qual",
     };
 
-    private static readonly string[] CurseWords = { "malédiction", "malediction", "curse", "cursed" };
+    private static readonly string[] CurseWords = {
+        "malédiction", "malediction", "curse", "cursed", "fluch",
+        "maldición", "maldicion", "maldição", "maldicao", "maledizione"
+    };
     private static readonly string[] VampireWords = { "vampire", "vampires", "vampiro", "vampiros", "vampir", "vampiri" };
-    // Lightweight multilingual query expansion for the most common BloodMoon
-    // topics. The stored editorial facts remain French; the remote AI
-    // translates their meaning when composing its answer.
+    // Editorial TXT content can be written in one language while residents ask
+    // in another. Canonical terms are searched together with resident terms.
+    // This covers the six grid languages without an extra remote AI request.
+    // Extend topic dictionaries as the knowledge collection grows.
     private static readonly (string[] triggers, string[] expansions)[] Synonyms = {
-        (new[] { "terrain", "terrains", "land", "lands", "plot", "parcel",
-                 "parcelle", "parcelas", "terreno", "terrenos", "grundstück", "grundstuck",
-                 "terreno", "terreni" },
-         new[] { "terrain", "freeland", "freelands", "parcelle" }),
-        (new[] { "freeland", "freelands" },
-         new[] { "terrain", "terrains", "freelands" }),
-        (new[] { "devenir", "become", "becoming", "convertirse", "diventare",
-                 "werden", "tornar", "virar" },
-         new[] { "devenir", "transformation" }),
+        (new[] { "freeland", "freelands", "gratuit", "gratuite", "gratuits", "gratuites",
+                 "free", "gratis", "gratuito", "gratuita", "gratuitos", "gratuitas",
+                 "kostenlos", "kostenlose", "kostenloses", "kostenfreien", "gratuitamente" },
+         new[] { "freeland", "freelands", "gratuit", "gratuitement", "free" }),
+        (new[] { "terrain", "terrains", "land", "lands", "plot", "plots",
+                 "parcel", "parcels", "parcelle", "parcelles", "parcelas",
+                 "terreno", "terrenos", "terreni", "terreno", "grundstück",
+                 "grundstücke", "grundstuck", "grundstucke" },
+         new[] { "terrain", "parcelle", "freeland", "freelands", "land" }),
+        (new[] { "équipe", "equipe", "team", "staff", "equipo", "equipa",
+                 "teammitglied", "mitarbeiter", "squadra" },
+         new[] { "équipe", "equipe", "team" }),
+        (new[] { "renouvellement", "renouveler", "renew", "renewal", "renovar",
+                 "renovación", "renovacao", "verlängern", "verlangerung",
+                 "rinnovare", "rinnovo" },
+         new[] { "renouveler", "renouvellement", "renew", "expiration" }),
         (new[] { "vampire", "vampires", "vampiro", "vampiros", "vampir", "vampiri" },
-         new[] { "vampire", "vampires" }),
-        (new[] { "malédiction", "malediction", "curse", "fluch", "maldición", "maldicao",
-                 "maledizione" },
-         new[] { "malédiction", "malediction", "curse" })
+         new[] { "vampire", "vampires", "vampiro" }),
+        (new[] { "malédiction", "malediction", "curse", "cursed", "fluch",
+                 "maldición", "maldicion", "maldição", "maldicao", "maledizione" },
+         new[] { "malédiction", "malediction", "curse", "vampire" }),
+        (new[] { "lycan", "lycans", "lycane", "licantropo", "licantropía",
+                 "licantropia", "werwolf", "lupo", "lobisomem" },
+         new[] { "lycan", "lycans", "lycanthrope" }),
+        (new[] { "devenir", "become", "becoming", "convertirse", "diventare",
+                 "werden", "tornar", "virar", "transformar" },
+         new[] { "devenir", "transformation" }),
+        (new[] { "marketplace", "boutique", "magasin", "shop", "store", "tienda",
+                 "negozio", "loja", "geschäft", "geschaft" },
+         new[] { "marketplace", "boutique", "vente" }),
+        (new[] { "acheter", "achat", "buy", "purchase", "comprar", "acquisto",
+                 "acquistare", "kaufen", "compra" },
+         new[] { "achat", "acheter", "marketplace" }),
+        (new[] { "vendre", "vente", "sell", "selling", "vender", "vendere",
+                 "verkaufen", "vendita", "venta" },
+         new[] { "vente", "vendre", "marketplace" }),
+        (new[] { "livraison", "delivery", "entrega", "consegna", "lieferung" },
+         new[] { "livraison", "marketplace", "delivery" }),
+        (new[] { "installation", "installer", "install", "instalar",
+                 "installieren", "installare", "instalação", "instalacao" },
+         new[] { "installer", "installation", "opensim" }),
+        (new[] { "configuration", "configurer", "configure", "configurar",
+                 "konfigurieren", "configurare", "configuração", "configuracao" },
+         new[] { "configuration", "configurer", "opensim" })
     };
     // The grid and the roleplay game share the name BloodMoon. Do not assume
     // a generic question about "rules" relates to roleplay.
@@ -142,30 +184,44 @@ public sealed class KnowledgeSearch
         ("handbook", new[] {
             "opensimulator", "opensim", "robust", "hypergrid", "osgrid", "ossl",
             "lsl", "oar", "iar", "ini", "mysql", "sqlite", "proxmox",
-            "console", "commandes serveur", "server commands", "script",
-            "scripts", "module", "modules", "configuration technique",
+            "console", "server commands", "commandes serveur",
+            "simulator", "simulateur", "simulador", "simulatore", "simulatoren",
             "configurer un simulateur", "installer un simulateur",
-            "region.ini", "opensim.ini", "firestorm",
-            "simulator", "simulator configuration", "server setup"
+            "region.ini", "opensim.ini", "server setup",
+            "simulator configuration", "konfiguration opensim",
+            "configuración opensim", "configurazione opensim",
+            "configuração opensim", "script opensim", "scripts opensim",
+            "module opensim", "modules opensim"
         }),
         ("marketplace", new[] {
             "marketplace", "magic box", "boutique", "vendeur", "vendeurs",
             "acheter un objet", "vendre un objet", "mise en vente",
             "commande marketplace", "livraison marketplace", "seller",
-            "buy an item", "sell an item", "storefront"
+            "buy an item", "sell an item", "storefront", "tienda",
+            "negozio", "loja", "verkaufen", "comprar", "vender",
+            "vendere", "acquistare", "kaufen", "livraison", "delivery",
+            "entrega", "consegna", "lieferung"
         }),
         ("roleplay", new[] {
-            "roleplay", "role play", "vampire", "vampires", "lycan", "lycans",
-            "malédiction", "malediction", "curse", "grimoire", "clan",
-            "clans", "âme", "ames", "soul", "vital liquid", "potion",
-            "potions", "revenant", "destroyed", "hud vampire",
+            "roleplay", "role play", "vampire", "vampires", "vampiro",
+            "vampiros", "vampir", "vampiri", "lycan", "lycans",
+            "malédiction", "malediction", "curse", "cursed", "fluch",
+            "maldición", "maldicion", "maldição", "maldicao", "maledizione",
+            "grimoire", "clan", "clans", "âme", "ames", "soul",
+            "vital liquid", "potion", "potions", "revenant", "destroyed",
+            "licantropo", "werwolf", "lobisomem", "hud vampire",
             "hud lycan", "bloodmoon pack", "créature", "creature"
         }),
         ("grid", new[] {
             "freeland", "freelands", "terrain gratuit", "terrains gratuits",
             "parcelle gratuite", "parcelles gratuites", "free land",
-            "free plot", "free parcel", "terreno gratis",
+            "free plot", "free parcel", "terreno gratis", "terreno gratuito",
+            "terreno gratuita", "terreno grátis", "parcela gratis",
+            "parcela gratuita", "terreno gratuito", "terreni gratuiti",
+            "grundstück kostenlos", "kostenloses grundstück",
+            "kostenloses land", "gratuit", "free land on bloodmoon",
             "bloodmoon resident", "bloodmoon grid", "grille bloodmoon",
+            "griglia bloodmoon", "grade bloodmoon", "rejilla bloodmoon",
             "équipe bloodmoon", "equipe bloodmoon", "team bloodmoon",
             "rejoindre la grille", "join the grid", "créer un compte",
             "creer un compte", "règlement de la grille",
@@ -185,8 +241,8 @@ public sealed class KnowledgeSearch
             .Select(domain => domain.Source)
             .ToList();
         // A broad request for free land is about the grid, even without "Freeland".
-        if (Regex.IsMatch(q, @"\b(terrain|terrains|parcelle|parcelles|land|plot|parcel|terreno|terrenos)\b") &&
-            Regex.IsMatch(q, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis)\b") &&
+        if (Regex.IsMatch(q, @"\b(terrain|terrains|parcelle|parcelles|land|plot|parcel|terreno|terrenos|terreni|grundstück|grundstücke|grundstuck)\b") &&
+            Regex.IsMatch(q, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis|gratuito|gratuita|gratuitos|gratuitas|grátis|kostenlos|kostenlose|kostenloses|kostenfreien)\b") &&
             !explicitDomains.Contains("grid"))
             explicitDomains.Add("grid");
         // For truly ambiguous questions, keep all sources available.
