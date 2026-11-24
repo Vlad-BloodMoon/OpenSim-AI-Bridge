@@ -84,22 +84,36 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
         Console.Error.WriteLine("Multilingual search expansion for French editorial notes failed.");
         return 1;
     }
-    var freelandHits = new[] {
+    var routingHits = new[] {
         new KnowledgeHit("https://bloodmoonpack.com/OpenSim_Handbook/commands-terrain-objects.php?lang=fr",
-                         "Terrain console commands", "Terrain administration", "handbook"),
+                         "OpenSimulator terrain console commands", "Technical server administration", "handbook"),
         new KnowledgeHit("knowledge://grid_bloodmoon/Terrain_Gratuit_Freelands.txt",
                          "Terrain Gratuit Freelands", "Contacter l'équipe BloodMoon", "local_grid_bloodmoon"),
         new KnowledgeHit("https://bloodmoonpack.com/grid/land/freeland.php",
-                         "Freeland BloodMoon", "Prêt de terrains gratuits", "grid")
+                         "Freeland BloodMoon", "Prêt de terrains gratuits", "grid"),
+        new KnowledgeHit("https://bloodmoonpack.com/roleplay/pages/guide.php",
+                         "Grimoire", "Malédiction des vampires", "roleplay"),
+        new KnowledgeHit("https://bloodmoonpack.com/Marketplace/",
+                         "Marketplace", "Achats, ventes et livraisons", "marketplace")
     };
-    if (KnowledgeSearch.FocusFreelandSources(
-            "comment obtenir un terrain gratuit sur BloodMoon ?", freelandHits).Count != 2 ||
-        KnowledgeSearch.FocusFreelandSources(
-            "comment gérer le terrain avec la console OpenSimulator ?", freelandHits).Count != 3 ||
-        KnowledgeSearch.FocusFreelandSources(
-            "How do I get a free plot on BloodMoon?", freelandHits).Count != 2)
+    static bool OnlyDomains(IReadOnlyList<KnowledgeHit> hits, params string[] domains) =>
+        hits.Count > 0 && hits.All(hit => domains.Contains(hit.Source));
+    if (!OnlyDomains(KnowledgeSearch.RouteSources(
+            "comment obtenir un terrain gratuit sur BloodMoon ?", routingHits), "grid", "local_grid_bloodmoon") ||
+        !OnlyDomains(KnowledgeSearch.RouteSources(
+            "comment configurer le terrain avec la console OpenSimulator ?", routingHits), "handbook") ||
+        !OnlyDomains(KnowledgeSearch.RouteSources(
+            "How can I get free land on BloodMoon?", routingHits), "grid", "local_grid_bloodmoon") ||
+        !OnlyDomains(KnowledgeSearch.RouteSources(
+            "Comment fonctionne la malédiction des vampires ?", routingHits), "roleplay") ||
+        !OnlyDomains(KnowledgeSearch.RouteSources(
+            "Comment vendre un objet sur la Marketplace ?", routingHits), "marketplace") ||
+        !OnlyDomains(KnowledgeSearch.RouteSources(
+            "Comment fonctionne un script OpenSim pour la Marketplace ?", routingHits),
+            "handbook", "marketplace") ||
+        KnowledgeSearch.RouteSources("bonjour", routingHits).Count != routingHits.Length)
     {
-        Console.Error.WriteLine("Freeland domain routing regression.");
+        Console.Error.WriteLine("Knowledge topic routing regression.");
         return 1;
     }
     var context = KnowledgeSearch.BuildContext(new[] {
