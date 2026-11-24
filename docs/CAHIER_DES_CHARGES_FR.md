@@ -1,5 +1,7 @@
 # Cahier des charges — OpenSim AI Bridge
 
+> **Document historique de référence (20 novembre 2026).** Ce cahier des charges décrit les objectifs initiaux, pas l'état actuel du logiciel. Plusieurs fonctions sont déjà développées et d'autres restent prévues. Consulte [README](../README.md) et [la feuille de route](ROADMAP.md) pour l'état vérifié au 24 novembre 2026.
+
 **Version :** 0.1 (spécification initiale) — 20 novembre 2026  
 **État :** projet en conception ; les fonctionnalités ci-dessous ne sont pas encore implémentées.
 
