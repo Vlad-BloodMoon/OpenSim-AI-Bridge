@@ -144,7 +144,7 @@ def approved(source, url):
         name = parsed.path.lstrip("/")
         if (category in LOCAL_CATEGORIES and parsed.scheme == "knowledge" and parsed.netloc == category and \
                 re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt", name) and \
-                not name.startswith(".") and not parsed.query and not parsed.fragment:
+                not name.startswith(".") and not parsed.query and not parsed.fragment):
             return url
         return None
     value = canonical(url)
