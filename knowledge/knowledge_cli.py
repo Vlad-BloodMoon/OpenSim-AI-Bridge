@@ -47,6 +47,11 @@ MAX_PDF_DOCUMENTS = 300
 MAX_TEXT_CHARS = 600_000
 MAX_CHUNK_CHARS = 1300
 DEFAULT_DB = Path("/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.db")
+LOCAL_ROOT = Path("/var/www/BloodMoon/AI_Knowledge")
+LOCAL_CATEGORIES = ("marketplace", "opensim", "grid_bloodmoon", "roleplay_bloodmoon")
+LOCAL_PREFIX = "local_"
+MAX_LOCAL_FILES = 500
+MAX_LOCAL_FILE_BYTES = 256_000
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -133,6 +138,15 @@ def canonical(url):
 
 
 def approved(source, url):
+    if source.startswith(LOCAL_PREFIX):
+        category = source[len(LOCAL_PREFIX):]
+        parsed = urlsplit(url)
+        name = parsed.path.lstrip("/")
+        if (category in LOCAL_CATEGORIES and parsed.scheme == "knowledge" and parsed.netloc == category and \
+                re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\\.txt", name) and \
+                not name.startswith(".") and not parsed.query and not parsed.fragment:
+            return url
+        return None
     value = canonical(url)
     if not value or source not in SOURCES:
         return None
@@ -197,7 +211,7 @@ def connect(db_path):
 def store(conn, source, url, title, text):
     if approved(source, url) != url:
         raise ValueError("Unapproved knowledge URL")
-    if len(text.strip()) < 80:
+    if len(text.strip()) < (20 if source.startswith(LOCAL_PREFIX) else 80):
         raise ValueError("Too little useful text to index")
     digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
     previous = conn.execute("SELECT sha256 FROM knowledge_pages WHERE url=?", (url,)).fetchone()
@@ -335,6 +349,52 @@ def crawl(conn, source, max_pages=600, delay=.15):
     return counts
 
 
+def import_local(conn, root=LOCAL_ROOT):
+    """Index curated UTF-8 notes. No symlink traversal, network, or web publishing."""
+    root = Path(root)
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("Local knowledge folder missing or symlinked")
+    found = set()
+    counters = {"indexed": 0, "unchanged": 0, "deleted": 0, "files": 0}
+    for category in LOCAL_CATEGORIES:
+        folder = root / category
+        if folder.is_symlink() or not folder.is_dir():
+            raise ValueError("Missing or unsafe local category: " + category)
+        for file in sorted(folder.iterdir()):
+            if file.suffix.lower() != ".txt" or file.name.startswith("."):
+                continue
+            if file.is_symlink() or not file.is_file():
+                raise ValueError("Unsafe local text file: " + category)
+            if not re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\\.txt", file.name):
+                raise ValueError("Invalid local text filename: " + file.name)
+            if file.stat().st_size > MAX_LOCAL_FILE_BYTES:
+                raise ValueError("Local text file exceeds size limit: " + file.name)
+            if counters["files"] >= MAX_LOCAL_FILES:
+                raise ValueError("Too many local knowledge files")
+            contents = file.read_text(encoding="utf-8-sig")
+            # Ignore template/empty files; they are not useful knowledge.
+            if len(contents.strip()) < 20:
+                continue
+            source = LOCAL_PREFIX + category
+            url = "knowledge://" + category + "/" + file.name
+            title = file.stem.replace("-", " ").replace("_", " ")
+            result, _ = store(conn, source, url, title, contents)
+            counters[result] += 1
+            counters["files"] += 1
+            found.add(url)
+    # Remove local entries when their TXT file has been deleted.
+    # This does not touch the separately crawled public HTML/PDF data.
+    old = conn.execute("SELECT url FROM knowledge_pages WHERE source LIKE 'local_%'").fetchall()
+    with conn:
+        for (url,) in old:
+            if url in found:
+                continue
+            conn.execute("DELETE FROM knowledge_passages WHERE url=?", (url,))
+            conn.execute("DELETE FROM knowledge_pages WHERE url=?", (url,))
+            counters["deleted"] += 1
+    return counters
+
+
 def safe_search(conn, query, count=5):
     tokens = re.findall(r"[^\W_]{2,}", query.lower(), flags=re.UNICODE)[:10]
     if not tokens:
@@ -359,6 +419,8 @@ def main():
     fixture.add_argument("--source", required=True, choices=list(SOURCES))
     fixture.add_argument("--file", type=Path, required=True)
     sub.add_parser("status")
+    local_cmd = sub.add_parser("import-local", help="Index curated UTF-8 TXT files without network")
+    local_cmd.add_argument("--root", type=Path, default=LOCAL_ROOT)
     find = sub.add_parser("search")
     find.add_argument("query")
     find.add_argument("--limit", type=int, default=5)
@@ -378,6 +440,8 @@ def main():
         if args.action == "import-html":
             title, text, _ = parse_page(args.file.read_text(encoding="utf-8"))
             print(store(conn, args.source, SOURCES[args.source], title, text))
+        elif args.action == "import-local":
+            print(json.dumps(import_local(conn, args.root), ensure_ascii=False, indent=2))
         elif args.action == "status":
             rows = conn.execute("""
                 SELECT source,count(*),sum((SELECT count(*) FROM knowledge_passages p WHERE p.url=d.url))
