@@ -44,6 +44,14 @@ class RepositoryConsistencyTests(unittest.TestCase):
                 self.assertIn(path, workflow)
                 self.assertTrue((ROOT / path).is_file())
 
+    def test_private_runtime_files_are_gitignored(self):
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8").splitlines()
+        for protected in ("ai-api-key.txt", "ai-keys/", "config/multi-ai.json",
+                          "config/translation.json", "config/knowledge-terms.json",
+                          "web-admin.php", "bot-password.txt"):
+            with self.subTest(file=protected):
+                self.assertIn(protected, ignore)
+
     def test_no_real_secrets_in_example_config(self):
         for name in ("config/appsettings.example.json", "config/bloodmoon.example.json"):
             config = json.loads((ROOT / name).read_text(encoding="utf-8"))
