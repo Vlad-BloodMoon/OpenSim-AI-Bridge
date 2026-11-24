@@ -26,7 +26,7 @@ class ProximityWelcomeSettingsTests(unittest.TestCase):
         values = {"startMode": "region", "region": "Welcome", "x": 128,
                   "y": 128, "z": 25, "enableIM": True,
                   "enableLocalChat": True, "reconnectEnabled": True,
-                  "welcomeEnabled": True, "welcomeRadius": 15,
+                  "welcomeEnabled": True, "welcomeFaceVisitor": True, "welcomeRadius": 15,
                   "welcomeDelay": 30,
                   "welcomeMessage": "Welcome, {avatar_name}! Please IM me."}
         values.update(overrides)
@@ -35,11 +35,13 @@ class ProximityWelcomeSettingsTests(unittest.TestCase):
     def test_defaults_off_then_save_and_reload(self):
         old = control.read_settings(self.root)
         self.assertFalse(old["welcomeEnabled"])
+        self.assertFalse(old["welcomeFaceVisitor"])
         self.assertIn("{avatar_name}", old["welcomeMessage"])
         result = control.save_settings(self.root, self.values())
         self.assertTrue(result["restartRequired"])
         saved = control.read_settings(self.root)
         self.assertTrue(saved["welcomeEnabled"])
+        self.assertTrue(saved["welcomeFaceVisitor"])
         self.assertEqual(saved["welcomeRadius"], 15)
         self.assertEqual(saved["welcomeDelay"], 30)
         self.assertEqual(saved["welcomeMessage"], "Welcome, {avatar_name}! Please IM me.")
@@ -49,6 +51,7 @@ class ProximityWelcomeSettingsTests(unittest.TestCase):
         initial = self.cfg.read_bytes()
         for change in (
             {"welcomeRadius": 90},
+            {"welcomeFaceVisitor": "true"},
             {"welcomeDelay": 0},
             {"welcomeEnabled": "true"},
             {"welcomeMessage": ""},
@@ -63,7 +66,7 @@ class ProximityWelcomeSettingsTests(unittest.TestCase):
 
     def test_legacy_write_does_not_enable_welcome(self):
         values = self.values()
-        for name in ("welcomeEnabled", "welcomeRadius", "welcomeDelay", "welcomeMessage"):
+        for name in ("welcomeEnabled", "welcomeFaceVisitor", "welcomeRadius", "welcomeDelay", "welcomeMessage"):
             del values[name]
         control.save_settings(self.root, values)
         self.assertFalse(control.read_settings(self.root)["welcomeEnabled"])
