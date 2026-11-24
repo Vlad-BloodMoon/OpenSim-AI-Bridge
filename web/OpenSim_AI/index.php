@@ -362,6 +362,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'enableLocalChat' => ($_POST['enableLocalChat'] ?? '') === '1',
                     'reconnectEnabled' => ($_POST['reconnectEnabled'] ?? '') === '1',
                     'welcomeEnabled' => ($_POST['welcomeEnabled'] ?? '') === '1',
+                    'welcomeFaceVisitor' => ($_POST['welcomeFaceVisitor'] ?? '') === '1',
                     'welcomeRadius' => filter_var($_POST['welcomeRadius'] ?? '', FILTER_VALIDATE_INT),
                     'welcomeDelay' => filter_var($_POST['welcomeDelay'] ?? '', FILTER_VALIDATE_INT),
                     'welcomeMessage' => is_string($_POST['welcomeMessage'] ?? null) ? trim($_POST['welcomeMessage']) : '',
@@ -736,6 +737,8 @@ textarea{resize:vertical}
 <fieldset><legend>Accueil automatique des visiteurs — chat local</legend>
 <p class="muted">Le bot accueille uniquement les nouveaux avatars entrant à proximité. Pas d'appel IA et aucune réponse aux questions dans le chat local. L'activation et les changements nécessitent un redémarrage de cet avatar. Le message est indépendant pour chaque bot.</p>
 <label style="margin:.6rem 0"><input type="checkbox" name="welcomeEnabled" value="1" <?= !empty($botSettings['welcomeEnabled']) ? 'checked' : '' ?>> Activer l'accueil automatique</label>
+<label style="margin:.6rem 0"><input type="checkbox" name="welcomeFaceVisitor" value="1" <?= !empty($botSettings['welcomeFaceVisitor']) ? 'checked' : '' ?>> Se tourner vers le visiteur lors de l'accueil</label>
+<p class="muted">Orientation du corps uniquement (aucun déplacement), juste avant le message. Le bot ne tourne pas vers les personnes à un autre étage ou lorsqu'il est assis. Option désactivée par défaut.</p>
 <div class="grid" style="margin:1rem 0">
 <div><label for="welcomeRadius">Rayon de détection (5–20 mètres)</label>
 <input type="number" id="welcomeRadius" name="welcomeRadius" min="5" max="20" required value="<?= (int)($botSettings['welcomeRadius'] ?? 15) ?>"></div>
