@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using System.Text;
 using LibreMetaverse;
 
 namespace OpenSimAiBridge;
@@ -40,7 +41,7 @@ public sealed class ProximityWelcome
         settings.RadiusMeters is >= 5 and <= 30 &&
         settings.RepeatDelayMinutes is >= 5 and <= 1440 &&
         !string.IsNullOrWhiteSpace(settings.Message) &&
-        settings.Message.Length <= 650 &&
+        settings.Message.Length <= 650 && Encoding.UTF8.GetByteCount(settings.Message) <= 700 &&
         !settings.Message.Any(c => char.IsControl(c) && c is not '\n' and not '\r' and not '\t');
 
     public void ResetObservation()
