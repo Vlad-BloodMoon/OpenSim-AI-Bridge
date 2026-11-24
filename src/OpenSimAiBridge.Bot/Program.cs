@@ -23,6 +23,17 @@ if (args.Length == 1 && args[0] == "--verify-welcome")
     IReadOnlyDictionary<UUID, Vector3> snapshot(params (UUID id, Vector3 pos)[] entries) =>
         entries.ToDictionary(x => x.id, x => x.pos);
 
+    // Varregion regression: full object positions beyond byte-sized 255 coords.
+    var largeRegion = new ProximityWelcome(new ProximityWelcomeOptions { Enabled = true, RadiusMeters = 20 });
+    var varRegionPos = new Vector3(350, 320, 125);
+    if (largeRegion.Observe(time, selfId, varRegionPos, snapshot()).Count != 0 ||
+        largeRegion.Observe(time.AddSeconds(8), selfId, varRegionPos,
+            snapshot((first, new Vector3(353, 323, 125)))).Count != 1)
+    {
+        Console.Error.WriteLine("Varregion welcome position regression.");
+        return 1;
+    }
+
     if (welcome.Observe(time, selfId, at, snapshot((first, new Vector3(130, 128, 25)))).Count != 0 ||
         welcome.Observe(time.AddSeconds(9), selfId, at, snapshot((first, new Vector3(130, 128, 25)))).Count != 0 ||
         welcome.Observe(time.AddSeconds(10), selfId, at, snapshot((first, new Vector3(130, 128, 25)),
