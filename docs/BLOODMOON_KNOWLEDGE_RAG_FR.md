@@ -163,3 +163,16 @@ L'artefact GitHub Actions contient `knowledge/knowledge_cli.py`, les unités sys
 ### Différence importante
 
 Le bouton **Actualiser l'indexation des quatre sites** reconstruit les sources Web/PDF ; il **n'indexe pas les TXT locaux**. L'indexation des TXT a son propre bouton et son propre timer. Le statut `success` du service atteste la réussite de la tâche, pas l'exactitude de chaque réponse IA : tester une question réelle en IM pour valider la recherche et le contexte.
+
+## Routage documentaire par domaine (24 novembre 2026)
+
+Le code .NET `KnowledgeSearch.cs` classe maintenant les questions selon des indices de sujet : **Handbook = technique OpenSimulator**, **Grid = services/règles de la grille BloodMoon**, **Roleplay = système de jeu**, **Marketplace = commerce sur la grille**. Les fiches TXT privées héritent de leur catégorie (`opensim`, `grid_bloodmoon`, `roleplay_bloodmoon`, `marketplace`).
+
+- Question « obtenir un terrain gratuit/Freeland » → sources Grid et TXT Grid, pas les commandes de terrains du Handbook.
+- Question « configurer un terrain avec la console OpenSimulator » → Handbook.
+- Question sur la malédiction des vampires → Roleplay et ses fiches.
+- Question sur une vente Marketplace → Marketplace et ses fiches.
+- Si la question mentionne explicitement plusieurs domaines, les sources de chacun restent admissibles ; si aucun domaine n'est reconnu, la recherche générale est conservée.
+- En l'absence de résultats pour un domaine détecté, les résultats ordinaires restent accessibles ; le moteur ne doit donc pas présenter ce filtrage comme une preuve d'exactitude des informations.
+
+C'est un **routage heuristique**, sans modèle local ni appel supplémentaire à une API IA. La recherche SQLite FTS5 et les données indexées ne changent pas ; seule la sélection des passages transmis au modèle distant change. Pour bénéficier du correctif, il faut déployer une **nouvelle DLL .NET** après succès de GitHub Actions et valider une réponse IM réelle. Il n'est pas nécessaire de réindexer ni de supprimer la base de connaissances.
