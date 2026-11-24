@@ -103,6 +103,46 @@ public sealed class KnowledgeSearch
         "politique de confidentialité", "politique de confidentialite"
     };
 
+    // Product and service names are not ordinary words to translate.
+    // Preserve the resident's terminology and add canonical index terms when
+    // Azure produces ambiguous words such as "intrigue" for a plot of land.
+    // Only exact word/phrase matches count: "grid" must not match "gridview".
+    private static readonly (string[] Names, string[] Canonical)[] ProtectedVocabulary = {
+        (new[] { "grid", "grille", "griglia", "grade", "rejilla" },
+         new[] { "grid", "grille", "bloodmoon" }),
+        (new[] { "freeland", "freelands" },
+         new[] { "freeland", "freelands", "terrain", "parcelle" }),
+        (new[] { "hud", "huds" },
+         new[] { "hud", "huds" }),
+        (new[] { "hypergrid", "hg" },
+         new[] { "hypergrid" }),
+        (new[] { "opensim", "opensimulator" },
+         new[] { "opensim", "opensimulator" }),
+        (new[] { "robust" },
+         new[] { "robust" }),
+        (new[] { "marketplace", "magic box" },
+         new[] { "marketplace", "magic", "box" }),
+        (new[] { "bloodmoon pack" },
+         new[] { "bloodmoon", "pack", "clan" }),
+        (new[] { "vital liquid" },
+         new[] { "vital", "liquid" })
+    };
+
+    private static bool HasExactPhrase(string text, string phrase) =>
+        Regex.IsMatch(text, @"(?<![\\p{L}\\p{N}])" +
+            Regex.Escape(phrase) + @"(?![\\p{L}\\p{N}])",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static string BuildRetrievalQuestion(string original, string? translated)
+    {
+        var canonical = ProtectedVocabulary
+            .Where(entry => entry.Names.Any(name => HasExactPhrase(original, name)))
+            .SelectMany(entry => entry.Canonical)
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+        return string.Join(" ", new[] { original, translated ?? "" }
+            .Concat(canonical).Where(part => !string.IsNullOrWhiteSpace(part)));
+    }
+
     private static string[] SearchTerms(string question)
     {
         var found = Regex.Matches(question.ToLowerInvariant(), @"[\p{L}\p{N}]{3,}")
@@ -217,6 +257,7 @@ public sealed class KnowledgeSearch
             "parcela gratuita", "terreno gratuito", "terreni gratuiti",
             "grundstück kostenlos", "kostenloses grundstück",
             "kostenloses land", "free land on bloodmoon",
+            "grid", "grille", "griglia", "grade", "rejilla",
             "bloodmoon resident", "bloodmoon grid", "grille bloodmoon",
             "griglia bloodmoon", "grade bloodmoon", "rejilla bloodmoon",
             "équipe bloodmoon", "equipe bloodmoon", "team bloodmoon",
