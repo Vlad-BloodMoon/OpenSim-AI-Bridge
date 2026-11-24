@@ -143,7 +143,7 @@ def approved(source, url):
         parsed = urlsplit(url)
         name = parsed.path.lstrip("/")
         if (category in LOCAL_CATEGORIES and parsed.scheme == "knowledge" and parsed.netloc == category and \
-                re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\\.txt", name) and \
+                re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt", name) and \
                 not name.startswith(".") and not parsed.query and not parsed.fragment:
             return url
         return None
@@ -365,7 +365,7 @@ def import_local(conn, root=LOCAL_ROOT):
                 continue
             if file.is_symlink() or not file.is_file():
                 raise ValueError("Unsafe local text file: " + category)
-            if not re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\\.txt", file.name):
+            if not re.fullmatch(r"[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt", file.name):
                 raise ValueError("Invalid local text filename: " + file.name)
             if file.stat().st_size > MAX_LOCAL_FILE_BYTES:
                 raise ValueError("Local text file exceeds size limit: " + file.name)
