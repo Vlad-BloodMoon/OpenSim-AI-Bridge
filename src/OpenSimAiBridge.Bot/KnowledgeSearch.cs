@@ -309,15 +309,11 @@ public sealed class KnowledgeSearch
                 using var command = conn.CreateCommand();
                 var predicate = sourceFilter.Length == 0 ? "" :
                     " AND source IN (" + string.Join(",", sourceFilter.Select((_, i) => "$s" + i)) + ")";
-                command.CommandText = """
-                    SELECT url, title, substr(body,1,1100), source
-                    FROM knowledge_passages
-                    WHERE knowledge_passages MATCH $query
-                    """ + predicate + """
-                    
-                    ORDER BY bm25(knowledge_passages, 0.0, 0.0, 6.0, 1.0)
-                    LIMIT 100
-                    """;
+                command.CommandText =
+                    "SELECT url, title, substr(body,1,1100), source " +
+                    "FROM knowledge_passages WHERE knowledge_passages MATCH $query" +
+                    predicate +
+                    " ORDER BY bm25(knowledge_passages, 0.0, 0.0, 6.0, 1.0) LIMIT 100";
                 command.Parameters.AddWithValue("$query", expression);
                 for (var i = 0; i < sourceFilter.Length; i++)
                     command.Parameters.AddWithValue("$s" + i, sourceFilter[i]);
