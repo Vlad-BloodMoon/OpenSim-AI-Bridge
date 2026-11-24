@@ -40,9 +40,8 @@ if (!is_array($config)) {
     bmAiReply(503, ['ok' => false, 'error' => 'Translator configuration unavailable']);
 }
 
-// A separate token is supported without changing the existing translators.
-// If not configured, use the same protected translator token.
-$expectedToken = trim((string)($config['ai_api_token'] ?? $config['api_token'] ?? ''));
+// Reuse the already configured BloodMoon Translator access token.
+$expectedToken = trim((string)($config['api_token'] ?? ''));
 $suppliedToken = (string)($_SERVER['HTTP_X_BLOODMOON_TOKEN'] ?? '');
 if ($expectedToken === '' || $suppliedToken === '' || !hash_equals($expectedToken, $suppliedToken)) {
     bmAiReply(403, ['ok' => false, 'error' => 'Forbidden']);
