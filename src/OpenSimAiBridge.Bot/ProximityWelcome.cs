@@ -38,7 +38,7 @@ public sealed class ProximityWelcome
     }
 
     public static bool Valid(ProximityWelcomeOptions settings) =>
-        settings.RadiusMeters is >= 5 and <= 30 &&
+        settings.RadiusMeters is >= 5 and <= 20 &&
         settings.RepeatDelayMinutes is >= 5 and <= 1440 &&
         !string.IsNullOrWhiteSpace(settings.Message) &&
         settings.Message.Length <= 650 && Encoding.UTF8.GetByteCount(settings.Message) <= 700 &&
