@@ -204,7 +204,7 @@ def save_settings(install, values):
     if welcome_fields.issubset(values):
         if type(values["welcomeEnabled"]) is not bool:
             raise ControlError("Invalid welcome activation")
-        if type(values["welcomeRadius"]) is not int or not 5 <= values["welcomeRadius"] <= 30:
+        if type(values["welcomeRadius"]) is not int or not 5 <= values["welcomeRadius"] <= 20:
             raise ControlError("Welcome radius must be 5–30 metres")
         if type(values["welcomeDelay"]) is not int or not 5 <= values["welcomeDelay"] <= 1440:
             raise ControlError("Welcome cooldown must be 5–1440 minutes")
