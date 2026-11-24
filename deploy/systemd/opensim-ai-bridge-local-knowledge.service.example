@@ -1,0 +1,28 @@
+[Unit]
+Description=BloodMoon AI — index privately curated TXT knowledge
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=@BOT_USER@
+Group=@BOT_USER@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=/usr/bin/python3 @INSTALL_DIR@/knowledge/knowledge_cli.py import-local --root /var/www/BloodMoon/AI_Knowledge
+TimeoutStartSec=120
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/www/BloodMoon/AI_Knowledge
+ReadWritePaths=@INSTALL_DIR@/data
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
