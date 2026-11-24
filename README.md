@@ -12,7 +12,7 @@
 
 | Capability | Current status |
 | --- | --- |
-| Headless .NET 8 avatar using LibreMetaverse, IM, local chat, login/reconnect | Implemented; basic BloodMoon login/IM tested |
+| Headless .NET 8 avatar using LibreMetaverse, IM, local chat, login/reconnect | Implemented; BloodMoon login, IM and public visitor greetings exercised in-world |
 | Authenticated PHP administration over HTTPS and a restricted local Unix socket | Implemented and used on BloodMoon |
 | Multiple avatar configurations, systemd services, maintenance and Firestorm mode | Implemented; not all multi-avatar combinations validated in-world |
 | Remote Groq, OpenRouter and Gemini models with configurable priority and fallback | Implemented; some provider probes validated live; quota-exhaustion failover still needs a live end-to-end test |
@@ -20,9 +20,11 @@
 | SQLite FTS5 documentation retrieval (BloodMoon Grid, Roleplay, Marketplace, OpenSim Handbook) | Implemented; includes local TXT folders with automated indexing |
 | Azure translation of questions for documentary retrieval, via a separate BloodMoon PHP gateway | Implemented and tested against the existing Azure service on BloodMoon |
 | Admin-editable protected terms, synonyms and knowledge categories | Implemented; shared private JSON, read again on each request |
-| Optional proximity welcome in public local chat, personalized with avatar name | Implemented per bot; disabled by default, requires in-world validation |
+| Optional visitor welcome in public local chat, original avatar name and optional turn to face the visitor | **Tested on BloodMoon** (OpenSimulator 0.9.3.1 / LibreMetaverse 3.3.1); individually configurable per bot; disabled by default |
 | Curated FAQ editor, unanswered-question review queue, grid/ROBUST tools | **Planned** |
-| Autonomous movement, WebRTC voice and Hypergrid travel | **Planned / research** |
+| Autonomous navigation, WebRTC voice and Hypergrid travel | **Planned / research** (one-time visitor-facing rotation is already implemented) |
+
+**Local welcome / Accueil :** the bot can detect a new resident near it, greet them once by their **original OpenSimulator name** in public local chat and optionally turn to face them without walking. The greeting never invokes a remote model; questions and AI answers remain **IM-only**. See the [visitor welcome guide (FR)](docs/PROXIMITY_WELCOME_FR.md) for settings, anti-repeat rules and varregion support.
 
 The bot uses **the resident's original message** for the AI answer and adds an Azure-translated version for searching documentation. Azure translation does not guarantee that domain-specific terms are translated correctly; the editable protected vocabulary helps retrieval retain names such as *Freeland*, *HUD* or *Hypergrid*. It is not a universal translation glossary.
 
@@ -72,9 +74,10 @@ Question -> dedicated PHP translation gateway -> existing Azure Translator
 dotnet OpenSimAiBridge.Bot.dll --verify-ai-safety
 dotnet OpenSimAiBridge.Bot.dll --verify-knowledge
 dotnet OpenSimAiBridge.Bot.dll --verify-shared-quota
+dotnet OpenSimAiBridge.Bot.dll --verify-welcome
 ```
 
-The tests do not require Firestorm or a live grid. A successful run does **not** replace in-world IM and failover verification.
+The tests do not require Firestorm or a live grid. A successful run does **not** replace in-world IM and failover verification. The visitor welcome and one-time turn-to-face behavior have additionally been tested in-world on BloodMoon; other grids, viewers and avatar animations remain unverified.
 
 ## Project structure / Organisation
 
