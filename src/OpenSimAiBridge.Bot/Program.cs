@@ -387,6 +387,27 @@ if (File.Exists(sharedProviderConfig))
     }
 }
 
+// Translation is configured separately from provider profiles so the Web
+// "save AI models" action cannot silently reset the gateway setting.
+var translationSettings = Path.Combine(
+    Environment.GetEnvironmentVariable("OSAI_INSTALL_DIR") ?? AppContext.BaseDirectory,
+    "config", "translation.json");
+if (File.Exists(translationSettings))
+{
+    try
+    {
+        using var translationDoc = JsonDocument.Parse(await File.ReadAllTextAsync(translationSettings));
+        var root = translationDoc.RootElement;
+        options.Ai.UseBloodMoonTranslation =
+            root.TryGetProperty("Enabled", out var flag) && flag.ValueKind == JsonValueKind.True;
+    }
+    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+    {
+        options.Ai.UseBloodMoonTranslation = false;
+        Console.Error.WriteLine("Translator configuration unreadable; translation fallback disabled.");
+    }
+}
+
 using var ai = new RemoteAiResponder(options.Ai);
 Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for configured IM access" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
