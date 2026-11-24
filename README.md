@@ -20,6 +20,7 @@
 | SQLite FTS5 documentation retrieval (BloodMoon Grid, Roleplay, Marketplace, OpenSim Handbook) | Implemented; includes local TXT folders with automated indexing |
 | Azure translation of questions for documentary retrieval, via a separate BloodMoon PHP gateway | Implemented and tested against the existing Azure service on BloodMoon |
 | Admin-editable protected terms, synonyms and knowledge categories | Implemented; shared private JSON, read again on each request |
+| Optional proximity welcome in public local chat, personalized with avatar name | Implemented per bot; disabled by default, requires in-world validation |
 | Curated FAQ editor, unanswered-question review queue, grid/ROBUST tools | **Planned** |
 | Autonomous movement, WebRTC voice and Hypergrid travel | **Planned / research** |
 
@@ -107,6 +108,7 @@ The tests do not require Firestorm or a live grid. A successful run does **not**
 - [Multi-avatar operations (FR)](docs/MULTI_BOT_V02_FR.md)
 - [Remote AI and provider routing (FR)](docs/MULTI_PROVIDER_ROUTING_FR.md)
 - [Knowledge, Azure and editable vocabulary (FR)](docs/BLOODMOON_KNOWLEDGE_RAG_FR.md)
+- [Proximity welcome in local chat / Accueil des visiteurs (FR)](docs/PROXIMITY_WELCOME_FR.md)
 - [Initial requirements (FR)](docs/CAHIER_DES_CHARGES_FR.md) and [initial requirements (EN)](docs/REQUIREMENTS_EN.md) — **historical specifications**, not current feature checklists
 - [Security](SECURITY.md)
 - [Repository audit and cleanup record (FR)](docs/AUDIT_2026-11-24_FR.md)
