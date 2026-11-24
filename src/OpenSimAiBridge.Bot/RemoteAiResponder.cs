@@ -222,6 +222,10 @@ public sealed class RemoteAiResponder : IDisposable
                     var gemini = profile.Provider == "Gemini";
                     var destination = gemini ? GeminiNative.Endpoint(profile.Model) : endpoint;
                     using var request = new HttpRequestMessage(HttpMethod.Post, destination);
+                    // Match the successful direct probe from robust-vm. A generic
+                    // HTTP client User-Agent received 403 from the Groq edge.
+                    request.Headers.UserAgent.ParseAdd("Mozilla/5.0");
+                    request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
                     if (gemini)
                         request.Headers.TryAddWithoutValidation("x-goog-api-key", key);
                     else
