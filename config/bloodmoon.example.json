@@ -17,7 +17,14 @@
   "Bot": {
     "EnableLocalChat": true,
     "EnableIM": true,
-    "ReconnectEnabled": true
+    "ReconnectEnabled": true,
+    "ProximityWelcome": {
+      "Enabled": false,
+      "FaceVisitor": false,
+      "RadiusMeters": 15,
+      "RepeatDelayMinutes": 30,
+      "Message": "Welcome to BloodMoon, {avatar_name}! I'm your AI assistant. Please send me an IM for questions; I only answer via private message."
+    }
   },
   "Ai": {
     "Enabled": false,
