@@ -116,16 +116,25 @@ public sealed class ProximityWelcome
                 // A visitor who left for fewer than 30 seconds still counts as present.
                 if (visitor.OutsideSince is not null && now - visitor.OutsideSince < TimeSpan.FromSeconds(30))
                     continue;
+                if (visitor.LastWelcomed is not null &&
+                    now - visitor.LastWelcomed < TimeSpan.FromMinutes(settings.RepeatDelayMinutes))
+                {
+                    // Already welcomed recently: consider present, but stay silent.
+                    visitor.Inside = true;
+                    visitor.OutsideSince = null;
+                    continue;
+                }
+                if (now - lastPublicGreeting < TimeSpan.FromSeconds(8))
+                {
+                    // Do not lose a new arrival during the public-chat rate limit:
+                    // retry at the next simulator location snapshot.
+                    continue;
+                }
                 visitor.Inside = true;
                 visitor.OutsideSince = null;
-                if ((visitor.LastWelcomed is null ||
-                     now - visitor.LastWelcomed >= TimeSpan.FromMinutes(settings.RepeatDelayMinutes)) &&
-                    now - lastPublicGreeting >= TimeSpan.FromSeconds(8))
-                {
-                    visitor.LastWelcomed = now;
-                    lastPublicGreeting = now;
-                    ready.Add(id);
-                }
+                visitor.LastWelcomed = now;
+                lastPublicGreeting = now;
+                ready.Add(id);
             }
 
             // Avoid unbounded state growth when lots of avatars visit over time.
