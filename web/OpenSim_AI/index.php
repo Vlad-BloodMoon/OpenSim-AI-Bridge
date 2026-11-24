@@ -738,7 +738,7 @@ textarea{resize:vertical}
 <label style="margin:.6rem 0"><input type="checkbox" name="welcomeEnabled" value="1" <?= !empty($botSettings['welcomeEnabled']) ? 'checked' : '' ?>> Activer l'accueil automatique</label>
 <div class="grid" style="margin:1rem 0">
 <div><label for="welcomeRadius">Rayon de détection (5–20 mètres)</label>
-<input type="number" id="welcomeRadius" name="welcomeRadius" min="5" max="30" required value="<?= (int)($botSettings['welcomeRadius'] ?? 15) ?>"></div>
+<input type="number" id="welcomeRadius" name="welcomeRadius" min="5" max="20" required value="<?= (int)($botSettings['welcomeRadius'] ?? 15) ?>"></div>
 <div><label for="welcomeDelay">Délai avant un nouvel accueil après une sortie (5–1440 min)</label>
 <input type="number" id="welcomeDelay" name="welcomeDelay" min="5" max="1440" required value="<?= (int)($botSettings['welcomeDelay'] ?? 30) ?>"></div>
 </div>
