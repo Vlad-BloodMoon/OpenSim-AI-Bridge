@@ -209,7 +209,7 @@ def save_settings(install, values):
         if type(values["welcomeDelay"]) is not int or not 5 <= values["welcomeDelay"] <= 1440:
             raise ControlError("Welcome cooldown must be 5–1440 minutes")
         welcome_text = values["welcomeMessage"]
-        if not isinstance(welcome_text, str) or not 1 <= len(welcome_text.strip()) <= 650 or any(
+        if not isinstance(welcome_text, str) or not 1 <= len(welcome_text.strip()) <= 650 or len(welcome_text.encode("utf-8")) > 700 or any(
             ord(c) < 32 and c not in "\n\r\t" for c in welcome_text
         ):
             raise ControlError("Welcome message invalid or too long")
