@@ -164,6 +164,7 @@ def read_settings(install):
         pos = location.get("Position", {})
         bot = data.get("Bot", {})
         return {
+            "startMode": "last" if location.get("Mode", "Region") == "Last" else "region",
             "region": str(location.get("RegionName", "")),
             "x": pos.get("X", 128), "y": pos.get("Y", 128), "z": pos.get("Z", 25),
             "enableIM": bot.get("EnableIM", True),
@@ -175,8 +176,13 @@ def read_settings(install):
 
 
 def save_settings(install, values):
-    if not isinstance(values, dict) or set(values) != {"region", "x", "y", "z", "enableIM", "enableLocalChat", "reconnectEnabled"}:
+    allowed = {"startMode", "region", "x", "y", "z", "enableIM", "enableLocalChat", "reconnectEnabled"}
+    required_legacy = allowed - {"startMode"}
+    if not isinstance(values, dict) or set(values) not in (allowed, required_legacy):
         raise ControlError("Invalid settings fields")
+    start_mode = values.get("startMode", "region")
+    if start_mode not in ("region", "last"):
+        raise ControlError("Invalid start mode")
     region = values.get("region")
     if not isinstance(region, str) or not 1 <= len(region.strip()) <= 80 or any(ord(c) < 32 for c in region):
         raise ControlError("Invalid region name")
@@ -193,6 +199,8 @@ def save_settings(install, values):
             raise ControlError("Invalid original configuration")
         grid = data["Grid"]
         location = grid.setdefault("StartLocation", {})
+        location["Mode"] = "Last" if start_mode == "last" else "Region"
+        # Preserve manual coordinates even when last-location mode is selected.
         location["RegionName"] = region.strip()
         location["Position"] = {"X": values["x"], "Y": values["y"], "Z": values["z"]}
         bot = data.setdefault("Bot", {})
