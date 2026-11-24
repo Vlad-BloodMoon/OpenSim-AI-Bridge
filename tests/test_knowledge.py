@@ -77,6 +77,53 @@ class KnowledgeTests(unittest.TestCase):
             self.assertIsNone(kb.approved(source, url))
         self.assertEqual(kb.MAX_RESPONSE_BYTES, 8_000_000)
 
+    def test_curated_local_notes_index_update_and_delete(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "AI_Knowledge"
+            for category in kb.LOCAL_CATEGORIES:
+                (root / category).mkdir(parents=True)
+            note = root / "grid_bloodmoon" / "terrains-freelands.txt"
+            note.write_text(
+                "Pour avoir un terrain sur BloodMoon Grid, cherchez les Freelands. "
+                "Ce sont des terrains proposés directement par la grille. "
+                "Pour connaître les disponibilités, demandez aux responsables.",
+                encoding="utf-8")
+            db = kb.connect(Path(directory) / "kb.db")
+            try:
+                stats = kb.import_local(db, root)
+                self.assertEqual(stats["indexed"], 1)
+                hits = kb.safe_search(db, "terrain freelands")
+                self.assertTrue(any(h["source"] == "local_grid_bloodmoon" for h in hits))
+                self.assertEqual(kb.import_local(db, root)["unchanged"], 1)
+                note.write_text(
+                    "Les freelands sont des terrains proposés par BloodMoon Grid. "
+                    "Consultez la grille pour connaître les disponibilités et conditions.",
+                    encoding="utf-8")
+                self.assertEqual(kb.import_local(db, root)["indexed"], 1)
+                note.unlink()
+                self.assertEqual(kb.import_local(db, root)["deleted"], 1)
+                self.assertFalse(kb.safe_search(db, "freelands"))
+            finally:
+                db.close()
+
+    def test_reject_symlink_and_unapproved_local_url(self):
+        self.assertEqual(
+            kb.approved("local_grid_bloodmoon", "knowledge://grid_bloodmoon/terrains.txt"),
+            "knowledge://grid_bloodmoon/terrains.txt")
+        self.assertIsNone(kb.approved("local_grid_bloodmoon", "knowledge://grid_bloodmoon/../secret.txt"))
+        self.assertIsNone(kb.approved("local_grid_bloodmoon", "https://other.invalid/terrains.txt"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "notes"
+            for category in kb.LOCAL_CATEGORIES:
+                (root / category).mkdir(parents=True)
+            (root / "grid_bloodmoon" / "private.txt").symlink_to(Path(directory) / "secret")
+            db = kb.connect(Path(directory) / "kb.db")
+            try:
+                with self.assertRaises(ValueError):
+                    kb.import_local(db, root)
+            finally:
+                db.close()
+
     def test_invalid_source_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             db = kb.connect(Path(directory) / "knowledge.db")
