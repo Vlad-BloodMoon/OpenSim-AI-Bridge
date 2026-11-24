@@ -1,5 +1,7 @@
 # Administration Web V0.2 — installation pilote BloodMoon
 
+> **Note de maintenance (24/11/2026) :** ce document conserve le déroulement de la première installation Web. Le contrôleur et le tableau de bord sont désormais utilisés sur BloodMoon ; les affirmations ci-dessous « non déployé », « six commandes » ou « sans IA » décrivent uniquement l'étape V0.2 historique. Pour l'état actuel, consulte [README](../README.md), [architecture](ARCHITECTURE.md) et [roadmap](ROADMAP.md). Ne pas rejouer aveuglément cette procédure sur une installation en service.
+
 **État :** code disponible dans GitHub, **non encore déployé ni testé sur robust-vm**.
 La V0.2 fournit un **tableau de bord sécurisé de contrôle du bot**, pas encore le moteur FAQ ou l'IA.
 
