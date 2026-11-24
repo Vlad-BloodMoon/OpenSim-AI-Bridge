@@ -89,12 +89,9 @@ public sealed class KnowledgeSearch
          new[] { "vente", "vendre", "marketplace" }),
         (new[] { "livraison", "delivery", "entrega", "consegna", "lieferung" },
          new[] { "livraison", "marketplace", "delivery" }),
-        (new[] { "installation", "installer", "install", "instalar",
-                 "installieren", "installare", "instalação", "instalacao" },
-         new[] { "installer", "installation", "opensim" }),
-        (new[] { "configuration", "configurer", "configure", "configurar",
-                 "konfigurieren", "configurare", "configuração", "configuracao" },
-         new[] { "configuration", "configurer", "opensim" })
+        (new[] { "simulateur", "simulator", "simulador", "simulatore",
+                 "simulatoren", "robust", "opensim", "opensimulator" },
+         new[] { "simulateur", "opensim", "opensimulator" })
     };
     // The grid and the roleplay game share the name BloodMoon. Do not assume
     // a generic question about "rules" relates to roleplay.
@@ -219,7 +216,7 @@ public sealed class KnowledgeSearch
             "terreno gratuita", "terreno grátis", "parcela gratis",
             "parcela gratuita", "terreno gratuito", "terreni gratuiti",
             "grundstück kostenlos", "kostenloses grundstück",
-            "kostenloses land", "gratuit", "free land on bloodmoon",
+            "kostenloses land", "free land on bloodmoon",
             "bloodmoon resident", "bloodmoon grid", "grille bloodmoon",
             "griglia bloodmoon", "grade bloodmoon", "rejilla bloodmoon",
             "équipe bloodmoon", "equipe bloodmoon", "team bloodmoon",
@@ -295,31 +292,56 @@ public sealed class KnowledgeSearch
             };
             using var conn = new SqliteConnection(builder.ToString());
             conn.Open();
-            using var command = conn.CreateCommand();
-            command.CommandText = """
-                SELECT url, title, substr(body,1,1100), source
-                FROM knowledge_passages
-                WHERE knowledge_passages MATCH $query
-                ORDER BY bm25(knowledge_passages, 0.0, 0.0, 6.0, 1.0)
-                LIMIT 100
-                """;
-            command.Parameters.AddWithValue("$query", expression);
-            using var rows = command.ExecuteReader();
-            var candidates = new List<KnowledgeHit>();
-            while (rows.Read())
+            // Filter in SQL *before* LIMIT 100: popular Handbook pages must
+            // not push out matching TXT/Grid passages in other languages.
+            // A broad search is retained only when no targeted passage exists.
+            var domains = DetectDomains(question);
+            var filteredSources = domains.SelectMany(domain => domain switch {
+                "grid" => new[] { "grid", "local_grid_bloodmoon" },
+                "roleplay" => new[] { "roleplay", "local_roleplay_bloodmoon" },
+                "handbook" => new[] { "handbook", "local_opensim" },
+                "marketplace" => new[] { "marketplace", "local_marketplace" },
+                _ => Array.Empty<string>()
+            }).Distinct(StringComparer.Ordinal).ToArray();
+
+            List<KnowledgeHit> ReadCandidates(string[] sourceFilter)
             {
-                var url = rows.GetString(0);
-                var source = rows.GetString(3);
-                if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)) continue;
-                var publicPage = parsed.Scheme == Uri.UriSchemeHttps &&
-                    string.Equals(parsed.Host, "bloodmoonpack.com", StringComparison.OrdinalIgnoreCase);
-                var localNote = parsed.Scheme == "knowledge" &&
-                    source.StartsWith("local_", StringComparison.Ordinal) &&
-                    string.Equals(parsed.Host, source["local_".Length..], StringComparison.Ordinal) &&
-                    Regex.IsMatch(parsed.AbsolutePath, @"^/[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt$");
-                if (!publicPage && !localNote) continue;
-                candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), source));
+                using var command = conn.CreateCommand();
+                var predicate = sourceFilter.Length == 0 ? "" :
+                    " AND source IN (" + string.Join(",", sourceFilter.Select((_, i) => "$s" + i)) + ")";
+                command.CommandText = """
+                    SELECT url, title, substr(body,1,1100), source
+                    FROM knowledge_passages
+                    WHERE knowledge_passages MATCH $query
+                    """ + predicate + """
+                    
+                    ORDER BY bm25(knowledge_passages, 0.0, 0.0, 6.0, 1.0)
+                    LIMIT 100
+                    """;
+                command.Parameters.AddWithValue("$query", expression);
+                for (var i = 0; i < sourceFilter.Length; i++)
+                    command.Parameters.AddWithValue("$s" + i, sourceFilter[i]);
+                using var rows = command.ExecuteReader();
+                var result = new List<KnowledgeHit>();
+                while (rows.Read())
+                {
+                    var url = rows.GetString(0);
+                    var source = rows.GetString(3);
+                    if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)) continue;
+                    var publicPage = parsed.Scheme == Uri.UriSchemeHttps &&
+                        string.Equals(parsed.Host, "bloodmoonpack.com", StringComparison.OrdinalIgnoreCase);
+                    var localNote = parsed.Scheme == "knowledge" &&
+                        source.StartsWith("local_", StringComparison.Ordinal) &&
+                        string.Equals(parsed.Host, source["local_".Length..], StringComparison.Ordinal) &&
+                        Regex.IsMatch(parsed.AbsolutePath, @"^/[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt$");
+                    if (!publicPage && !localNote) continue;
+                    result.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), source));
+                }
+                return result;
             }
+            var candidates = ReadCandidates(filteredSources);
+            if (candidates.Count == 0 && filteredSources.Length > 0)
+                candidates = ReadCandidates(Array.Empty<string>());
             // Keep only topically relevant indexed domains when they exist.
             var relevantCandidates = RouteSources(question, candidates);
             // Re-rank over a wider pool and deduplicate URLs, so one noisy page
