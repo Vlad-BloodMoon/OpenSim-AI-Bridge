@@ -60,6 +60,14 @@
 
 There is no completed grid-database adapter or translation integration. See the routing document for migration notes and security limitations.
 
+## Avatar login location / Position de connexion de l'avatar
+
+**FR :** La page **Configuration** permet de choisir « Région et coordonnées personnalisées » (comportement existant) ou « Dernier emplacement enregistré sur la grille ». En mode dernier emplacement, le bot envoie `login.Start = "last"` via LibreMetaverse : le service de connexion OpenSimulator résout alors la dernière région et position enregistrées pour cet avatar. Aucune copie de la position du tableau de bord ni lecture directe de ROBUST n'est nécessaire. Les coordonnées manuelles restent enregistrées pour un éventuel retour au mode personnalisé. Les configurations sans propriété `StartLocation.Mode` continuent en mode région. Le changement est appliqué **au prochain démarrage du bot**, pas immédiatement.
+
+**EN:** The bot settings page can use fixed region/coordinates or OpenSimulator's native last-location login (`login.Start = "last"`). Last location is resolved by the grid login service, not by locally caching dashboard coordinates. Existing configurations keep fixed-region behavior. A bot restart is required after changing settings.
+
+**Status:** Implemented in repository source; GitHub Actions and live OpenSimulator reconnection should be verified before deployment.
+
 ## Initial milestone / Premier jalon
 
 A headless avatar logs in, appears in a configured region, receives an IM, replies without an AI request, exposes health/location to the Web API and reconnects after disconnection. Test off-production before enabling on the BloodMoon welcome region.
