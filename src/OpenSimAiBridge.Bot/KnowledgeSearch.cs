@@ -135,6 +135,23 @@ public sealed class KnowledgeSearch
         return score;
     }
 
+    // Freelands are a BloodMoon grid service, not OpenSimulator's technical
+    // terrain/parcel administration. The Handbook may coincidentally match
+    // "terrain", but must not be cited as a Freeland application guide.
+    public static IReadOnlyList<KnowledgeHit> FocusFreelandSources(
+        string question, IReadOnlyList<KnowledgeHit> hits)
+    {
+        var query = question.ToLowerInvariant();
+        bool freeland = Regex.IsMatch(query, @"\bfreelands?\b", RegexOptions.IgnoreCase) ||
+            (Regex.IsMatch(query, @"\b(terrain|terrains|parcelle|parcelles|land|plot|terreno|terrenos)\b") &&
+             Regex.IsMatch(query, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis)\b"));
+        if (!freeland) return hits;
+        var gridHits = hits.Where(hit =>
+            hit.Source is "grid" or "local_grid_bloodmoon").ToArray();
+        // Fail open to ordinary retrieval when grid sources are absent.
+        return gridHits.Length > 0 ? gridHits : hits;
+    }
+
     private static string DocumentKey(KnowledgeHit hit, bool curseQuestion)
     {
         if (!curseQuestion || !hit.Url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
@@ -191,9 +208,13 @@ public sealed class KnowledgeSearch
                 if (!publicPage && !localNote) continue;
                 candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), source));
             }
+            // Use the official grid/Freeland corpus when it contains answers.
+            // This prevents generic OpenSimulator terrain commands from leaking
+            // into instructions for obtaining a BloodMoon free plot.
+            var relevantCandidates = FocusFreelandSources(question, candidates);
             // Re-rank over a wider pool and deduplicate URLs, so one noisy page
             // cannot occupy all three context slots. Preserve order for ties.
-            return candidates.Select((hit, index) => new {
+            return relevantCandidates.Select((hit, index) => new {
                     Hit = hit,
                     Index = index,
                     Rank = Score(hit, terms, curseQuestion, governanceQuestion)
