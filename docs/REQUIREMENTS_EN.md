@@ -1,5 +1,7 @@
 # OpenSim AI Bridge — Requirements (EN)
 
+> **Historical requirements, 20 November 2026.** This is the original scope, **not** the current implementation status. Some features are now implemented, while others remain planned. See the [README](../README.md) and [roadmap](ROADMAP.md) for the audited current state.
+
 **Status:** initial proposal, 20 November 2026; not implemented yet.  
 **Reference environment:** BloodMoon / OpenSimulator 0.9.3.1; reusable across grids.
 
