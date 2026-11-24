@@ -42,6 +42,7 @@ jobs:
           python3 -m py_compile controller/control.py controller/multi_bot.py controller/provider_profiles.py knowledge/knowledge_cli.py
           python3 -m unittest discover -s tests -v
           php -l web/OpenSim_AI/index.php
+          php -l deploy/php/ai-translate.php
 
       - name: Restore dependencies
         run: dotnet restore src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj
@@ -87,6 +88,8 @@ jobs:
           cp scripts/*.sh dist/linux-x64/scripts/
           chmod +x dist/linux-x64/scripts/*.sh
           cp deploy/systemd/*.example dist/linux-x64/deploy/systemd/
+          mkdir -p dist/linux-x64/deploy/php
+          cp deploy/php/ai-translate.php dist/linux-x64/deploy/php/
           mkdir -p dist/linux-x64/knowledge
           cp knowledge/knowledge_cli.py dist/linux-x64/knowledge/
           mkdir -p dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI
