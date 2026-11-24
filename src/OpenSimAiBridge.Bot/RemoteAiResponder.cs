@@ -29,6 +29,8 @@ public sealed class RemoteAiSettings
     public string SystemPrompt { get; set; } = "Tu es un assistant BloodMoon. Réponds dans la langue du résident, sans inventer.";
     public string Mode { get; set; } = "auto";
     public List<RemoteAiProfile> Profiles { get; set; } = new();
+    public bool UseBloodMoonTranslation { get; set; } = false;
+    public string BloodMoonTranslationTokenEnv { get; set; } = "OSAI_BLOODMOON_TRANSLATOR_TOKEN";
 }
 
 /// <summary>Remote IM assistant with public-safe provider fallback and short isolated memory.</summary>
@@ -54,6 +56,7 @@ public sealed class RemoteAiResponder : IDisposable
     private readonly AiRequestGate requestGate = new();
     private readonly KnowledgeSearch knowledge;
     private readonly SharedProviderQuota sharedQuota;
+    private readonly BloodMoonTranslator translator;
     private DateTimeOffset hourStart = DateTimeOffset.UtcNow;
     private int usedThisHour;
 
@@ -62,6 +65,8 @@ public sealed class RemoteAiResponder : IDisposable
         this.settings = settings;
         knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
         sharedQuota = new SharedProviderQuota(SharedProviderQuota.DefaultPath());
+        translator = new BloodMoonTranslator(settings.UseBloodMoonTranslation,
+                                              settings.BloodMoonTranslationTokenEnv);
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
         legacyKey = Environment.GetEnvironmentVariable(settings.ApiKeyEnv);
     }
@@ -172,7 +177,11 @@ public sealed class RemoteAiResponder : IDisposable
                 usedThisHour++;
             }
 
-            var hits = knowledge.Search(prompt);
+            // Translate for retrieval only: keep the resident's original IM
+            // for the LLM so it can answer in that resident's own language.
+            var frenchQuestion = await translator.ToFrenchForSearchAsync(prompt, cancellationToken);
+            var retrievalQuestion = frenchQuestion is null ? prompt : prompt + " " + frenchQuestion;
+            var hits = knowledge.Search(retrievalQuestion);
             var context = KnowledgeSearch.BuildContext(hits);
             var history = PreviousTurns(sender, now);
             var messages = new List<object> { new { role = "system", content =
