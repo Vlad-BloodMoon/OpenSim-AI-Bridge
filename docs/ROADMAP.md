@@ -15,12 +15,15 @@
 - [x] Traduction Azure des questions **pour la recherche documentaire**, via un PHP `ai-translate.php` distinct des services `translate.php` et `web-translate.php` existants.
 - [x] Traduction Azure réellement testée depuis `robust-vm` : détection EN/ES/DE et recherche retrouvant la fiche Freeland ; réponse finale de bout en bout dans le viewer **encore à tester**.
 - [x] Administration du vocabulaire de recherche : ajout/édition/suppression de termes, variantes, mots-clés et catégorie documentaire via l'interface protégée ; chargement à chaque recherche sans redémarrage.
+- [x] Accueil de proximité en **chat local canal 0** avec nom classique OpenSimulator, rayon et délai indépendants par bot, protection anti-répétition, sans coût IA. **Confirmé en jeu sur BloodMoon**, y compris dans une grande région (`ObjectsAvatars`, positions complètes).
+- [x] Orientation optionnelle du corps du bot vers le résident au moment de l'accueil (`Movement.TurnToward`) **confirmée en jeu avec Firestorm sur BloodMoon**. Aucun déplacement autonome n'est implémenté.
 
 ## Production validations still required / À valider réellement
 
 - [ ] Faire une conversation IM complète dans Firestorm avec questions FR/EN/ES/DE/IT/PT et réponses sourcées.
 - [ ] Provoquer un 429 contrôlé, observer le passage au modèle suivant, puis le retour après refroidissement ; vérifier les quotas partagés lors de connexions simultanées.
 - [ ] Tester plusieurs avatars connectés simultanément, leurs configurations indépendantes, leur arrêt/reprise et le mode Firestorm.
+- [ ] Tester l'accueil dans d'autres régions et viewers, sur un avatar assis ou animé, et lorsque plusieurs visiteurs arrivent simultanément ; vérifier la coordination entre bots proches.
 - [ ] Tester les cycles redémarrage machine, déconnexion réseau, retour réseau et disparition/recréation des services.
 - [ ] Déployer et vérifier les droits et la confidentialité sur une grille de test distincte de BloodMoon.
 - [ ] Vérifier les politiques de données personnelles, de journalisation et de conservation dans le déploiement réel.
@@ -32,7 +35,7 @@
 - [ ] File des questions non reconnues, modération, audit et statistiques de coûts réels/tokens.
 - [ ] Adaptateurs ROBUST/Marketplace contrôlés et opérations limitées par outils.
 - [ ] Préférences persistantes de langue par résident ; traduction conversationnelle entre résidents.
-- [ ] Animation, déplacement autonome, téléportation, WebRTC voice, Hypergrid travel.
+- [ ] Animations déclenchées, **navigation/déplacement autonome**, téléportation, WebRTC voice, Hypergrid travel (la simple rotation ponctuelle vers un visiteur est déjà livrée).
 - [ ] Autorisations multi-rôles Web et fonctions d'administration avancées.
 - [ ] Licence publique explicite après audit des dépendances et de leurs obligations.
 
