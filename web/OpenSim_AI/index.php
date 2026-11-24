@@ -155,6 +155,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 $error = (string) ($response['error'] ?? 'Impossible de démarrer la synchronisation.');
             }
+        } elseif ($action === 'knowledge_local_refresh') {
+            $page = 'knowledge';
+            $response = request_control('knowledge_local_refresh');
+            if ($response['ok'] ?? false) {
+                $message = !empty($response['result']['alreadyRunning'])
+                    ? 'Indexation des fiches TXT déjà en cours.'
+                    : 'Réindexation des fiches TXT lancée.';
+            } else {
+                $error = (string) ($response['error'] ?? 'Impossible de réindexer les fiches TXT.');
+            }
         } elseif ($action === 'fleet_stop' || $action === 'fleet_resume') {
             $page = 'maintenance';
             if (($_POST['fleet_confirm'] ?? '') !== 'yes') {
@@ -736,7 +746,46 @@ foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $k
 <input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
 <button name="action" value="knowledge_refresh" <?= $kbRunning ? 'disabled' : '' ?>><?= $kbRunning ? 'Indexation en cours…' : 'Actualiser l\'indexation des quatre sites' ?></button>
 </form>
-<p class="muted">La synchronisation s'exécute indépendamment des avatars IA. Actualise cette page pour consulter les compteurs. Seules les ressources publiques autorisées sont indexées.</p>
+<p class="muted">Ce bouton actualise uniquement les quatre sites et leurs PDF. L'indexation des fiches TXT est distincte.</p>
+<hr>
+<h3>Fiches locales AI_Knowledge (.txt)</h3>
+<p class="muted">Dépose tes documents UTF-8 dans <code><?= esc((string)($kb['localDirectory'] ?? '/var/www/BloodMoon/AI_Knowledge')) ?></code>. Les fichiers sont privés, mais leurs informations alimentent les réponses dans toutes les langues. Ils sont réindexés automatiquement toutes les cinq minutes, indépendamment de l'indexation des sites.</p>
+<?php
+$localNames = [
+    'local_marketplace' => 'marketplace',
+    'local_opensim' => 'opensim',
+    'local_grid_bloodmoon' => 'grid_bloodmoon',
+    'local_roleplay_bloodmoon' => 'roleplay_bloodmoon',
+];
+?>
+<table style="width:100%;text-align:left;border-spacing:0 .6rem">
+<thead><tr><th>Dossier</th><th>Fichiers TXT indexés</th><th>Passages</th></tr></thead>
+<tbody>
+<?php foreach ($localNames as $key => $name):
+$found = null;
+foreach (($kb['sources'] ?? []) as $entry) { if (($entry['source'] ?? '') === $key) { $found = $entry; break; } } ?>
+<tr><td><?= esc($name) ?></td><td><?= (int)($found['pages'] ?? 0) ?></td><td><?= (int)($found['passages'] ?? 0) ?></td></tr>
+<?php endforeach ?>
+</tbody></table>
+<p><strong>Indexation locale :</strong>
+<?php
+$localState = (string)($kb['localService'] ?? 'unknown');
+$localResult = (string)($kb['localResult'] ?? 'unknown');
+echo esc(in_array($localState, ['active', 'activating'], true)
+    ? 'En cours' : ($localResult === 'success'
+        ? 'Dernière exécution réussie' : 'État : ' . $localState . ' / ' . $localResult));
+?>
+</p>
+<?php if (!empty($kb['localFinishedAt'])): ?>
+<p class="muted">Dernier passage : <?= esc((string)$kb['localFinishedAt']) ?></p>
+<?php endif ?>
+<form method="post">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="knowledge">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<button name="action" value="knowledge_local_refresh" <?= in_array($localState, ['active', 'activating'], true) ? 'disabled' : '' ?>><?= in_array($localState, ['active', 'activating'], true) ? 'Indexation des fiches en cours…' : 'Réindexer les fiches TXT maintenant' ?></button>
+</form>
+<p class="muted">Les compteurs augmentent après indexation des fichiers. Actualise la page pour voir le résultat ; aucune interruption des avatars IA.</p>
 <?php endif ?>
 </section>
 <?php endif ?>
