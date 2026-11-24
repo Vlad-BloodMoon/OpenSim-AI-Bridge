@@ -1,0 +1,110 @@
+name: Publish v1.0.0 public release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'README.md'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.head_commit.message == 'release: publish v1.0.0'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@v4
+
+      - name: Set up .NET 8 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Verify application scripts and control tests
+        run: |
+          bash -n scripts/*.sh
+          python3 -m unittest discover -s tests -v
+          python3 -m py_compile controller/*.py knowledge/*.py
+          php -l web/OpenSim_AI/index.php
+          php -l deploy/php/ai-translate.php
+
+      - name: Build release binary and verify offline behavior
+        run: |
+          dotnet restore src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj
+          dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release -r linux-x64 --self-contained false -o dist/linux-x64
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-invariant-rate
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-ai-safety
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-knowledge
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-welcome
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-shared-quota
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-im-chunks
+          dotnet dist/linux-x64/OpenSimAiBridge.Bot.dll --verify-ai-concurrency
+
+      - name: Assemble a public-only archive, including docs and examples
+        run: |
+          mkdir -p dist/linux-x64/config dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI dist/linux-x64/scripts dist/linux-x64/deploy/systemd dist/linux-x64/deploy/php dist/linux-x64/knowledge dist/linux-x64/docs release
+          cp config/*.example.json dist/linux-x64/config/
+          cp bot-password.example.txt dist/linux-x64/
+          cp controller/*.py dist/linux-x64/controller/
+          cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
+          cp scripts/*.sh dist/linux-x64/scripts/
+          chmod +x dist/linux-x64/scripts/*.sh
+          cp deploy/systemd/*.example dist/linux-x64/deploy/systemd/
+          cp deploy/php/ai-translate.php dist/linux-x64/deploy/php/
+          cp knowledge/knowledge_cli.py dist/linux-x64/knowledge/
+          cp docs/*.md dist/linux-x64/docs/
+          cp README.md SECURITY.md dist/linux-x64/
+          printf '%s\n' "OpenSim AI Bridge v1.0.0" "Build: ${GITHUB_SHA}" "Linux x64 / .NET 8 framework-dependent" "No private credentials, databases, avatar passwords or provider tokens included." > dist/linux-x64/BUILD_INFO.txt
+          test ! -e dist/linux-x64/appsettings.json
+          test ! -e dist/linux-x64/bot-password.txt
+          test ! -e dist/linux-x64/ai-api-key.txt
+          test ! -e dist/linux-x64/config/multi-ai.json
+          test ! -e dist/linux-x64/config/translation.json
+          python3 - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile, ZIP_DEFLATED
+          root = Path('dist/linux-x64')
+          dst = Path('release/OpenSim-AI-Bridge-v1.0.0-linux-x64.zip')
+          with ZipFile(dst, 'w', compression=ZIP_DEFLATED, compresslevel=9) as z:
+              for p in sorted(root.rglob('*')):
+                  if p.is_file():
+                      z.write(p, p.relative_to(root).as_posix())
+          with ZipFile(dst) as z:
+              names = z.namelist()
+              required = ('OpenSimAiBridge.Bot.dll', 'README.md', 'docs/RELEASE_INSTALL_FR_EN.md',
+                          'docs/RELEASE_NOTES_V1.0.0.md', 'web/OpenSim_AI/index.php',
+                          'controller/control.py', 'config/appsettings.example.json')
+              assert all(name in names for name in required), 'Missing release component'
+              assert not any(name in names for name in ('appsettings.json', 'bot-password.txt',
+                  'ai-api-key.txt', 'config/multi-ai.json')), 'Private file in release'
+          print('Release ZIP verified:', dst)
+          PY
+          cd release
+          sha256sum OpenSim-AI-Bridge-v1.0.0-linux-x64.zip > SHA256SUMS.txt
+          sha256sum -c SHA256SUMS.txt
+
+      - name: Create stable GitHub Release with versioned ZIP and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view v1.0.0 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v1.0.0 already exists; refusing to overwrite it."
+            exit 1
+          fi
+          gh release create v1.0.0 \
+            release/OpenSim-AI-Bridge-v1.0.0-linux-x64.zip \
+            release/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "OpenSim AI Bridge v1.0.0 — First Public Release" \
+            --notes-file docs/RELEASE_NOTES_V1.0.0.md \
+            --latest
+
+      - name: Show published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release view v1.0.0 --repo "$GITHUB_REPOSITORY" --json url,tagName,isPrerelease,assets
