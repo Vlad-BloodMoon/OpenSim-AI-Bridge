@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 
 namespace OpenSimAiBridge;
 
@@ -103,41 +104,99 @@ public sealed class KnowledgeSearch
         "politique de confidentialité", "politique de confidentialite"
     };
 
-    // Product and service names are not ordinary words to translate.
-    // Preserve the resident's terminology and add canonical index terms when
-    // Azure produces ambiguous words such as "intrigue" for a plot of land.
-    // Only exact word/phrase matches count: "grid" must not match "gridview".
-    private static readonly (string[] Names, string[] Canonical)[] ProtectedVocabulary = {
-        (new[] { "grid", "grille", "griglia", "grade", "rejilla" },
-         new[] { "grid", "grille", "bloodmoon" }),
-        (new[] { "freeland", "freelands" },
-         new[] { "freeland", "freelands", "terrain", "parcelle" }),
-        (new[] { "hud", "huds" },
-         new[] { "hud", "huds" }),
-        (new[] { "hypergrid", "hg" },
-         new[] { "hypergrid" }),
-        (new[] { "opensim", "opensimulator" },
-         new[] { "opensim", "opensimulator" }),
-        (new[] { "robust" },
-         new[] { "robust" }),
-        (new[] { "marketplace", "magic box" },
-         new[] { "marketplace", "magic", "box" }),
-        (new[] { "bloodmoon pack" },
-         new[] { "bloodmoon", "pack", "clan" }),
-        (new[] { "vital liquid" },
-         new[] { "vital", "liquid" })
+    // This vocabulary is managed in the authenticated BloodMoon AI web admin.
+    // It is shared by all avatars and reloaded per query: no restart required.
+    // Prior to first save, the built-in defaults retain the old behavior.
+    private sealed record VocabularyEntry(string Term, string[] Aliases,
+                                          string[] Keywords, string Domain);
+
+    private static readonly VocabularyEntry[] DefaultVocabulary = {
+        new("Grid", new[] { "grille", "griglia", "grade", "rejilla" },
+            new[] { "grid", "grille", "bloodmoon" }, "grid"),
+        new("Freeland", new[] { "Freelands" },
+            new[] { "freeland", "freelands", "terrain", "parcelle" }, "grid"),
+        new("HUD", new[] { "HUDs" }, new[] { "hud", "huds" }, ""),
+        new("Hypergrid", new[] { "HG" }, new[] { "hypergrid" }, "handbook"),
+        new("OpenSim", new[] { "OpenSimulator" },
+            new[] { "opensim", "opensimulator" }, "handbook"),
+        new("ROBUST", Array.Empty<string>(), new[] { "robust" }, "handbook"),
+        new("Marketplace", new[] { "Magic Box" },
+            new[] { "marketplace", "magic", "box" }, "marketplace"),
+        new("BloodMoon Pack", Array.Empty<string>(),
+            new[] { "bloodmoon", "pack", "clan" }, "roleplay"),
+        new("Vital Liquid", Array.Empty<string>(),
+            new[] { "vital", "liquid" }, "roleplay")
     };
 
+    private static string VocabularyPath()
+    {
+        var install = Environment.GetEnvironmentVariable("OSAI_INSTALL_DIR");
+        if (string.IsNullOrWhiteSpace(install)) install = AppContext.BaseDirectory;
+        return Path.Combine(install, "config", "knowledge-terms.json");
+    }
+
+    private static bool ValidPhrase(string word) =>
+        word.Length is >= 2 and <= 60 &&
+        !word.Any(c => char.IsControl(c) || "<>{}[]".Contains(c));
+
+    private static string[] ParseWords(string text, int max) =>
+        text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+            .Take(max + 1).ToArray();
+
+    private static IReadOnlyList<VocabularyEntry> LoadVocabulary()
+    {
+        try
+        {
+            var path = VocabularyPath();
+            if (!File.Exists(path)) return DefaultVocabulary;
+            var fi = new FileInfo(path);
+            if (fi.Length > 65536 || fi.Length < 2) return DefaultVocabulary;
+            using var document = JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            if (!root.TryGetProperty("entries", out var entries) ||
+                entries.ValueKind != JsonValueKind.Array ||
+                entries.GetArrayLength() > 100) return DefaultVocabulary;
+            var loaded = new List<VocabularyEntry>();
+            foreach (var entry in entries.EnumerateArray())
+            {
+                if (!entry.TryGetProperty("term", out var termValue) ||
+                    !entry.TryGetProperty("aliases", out var aliasValue) ||
+                    !entry.TryGetProperty("keywords", out var keywordValue) ||
+                    !entry.TryGetProperty("domain", out var domainValue)) return DefaultVocabulary;
+                if (termValue.ValueKind != JsonValueKind.String ||
+                    aliasValue.ValueKind != JsonValueKind.String ||
+                    keywordValue.ValueKind != JsonValueKind.String ||
+                    domainValue.ValueKind != JsonValueKind.String) return DefaultVocabulary;
+                var term = termValue.GetString()!;
+                var aliases = ParseWords(aliasValue.GetString()!, 12);
+                var keywords = ParseWords(keywordValue.GetString()!, 16);
+                var domain = domainValue.GetString()!;
+                if (!ValidPhrase(term) || aliases.Length > 12 || keywords.Length is < 1 or > 16 ||
+                    aliases.Concat(keywords).Any(w => !ValidPhrase(w)) ||
+                    domain is not ("" or "grid" or "roleplay" or "marketplace" or "handbook"))
+                    return DefaultVocabulary;
+                loaded.Add(new VocabularyEntry(term, aliases, keywords, domain));
+            }
+            return loaded;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or
+            JsonException or ArgumentException or InvalidOperationException)
+        {
+            return DefaultVocabulary;
+        }
+    }
+
     private static bool HasExactPhrase(string text, string phrase) =>
-        Regex.IsMatch(text, @"(?<![\p{L}\p{N}])" +
-            Regex.Escape(phrase) + @"(?![\p{L}\p{N}])",
+        Regex.IsMatch(text, @"(?<![\\p{L}\\p{N}])" +
+            Regex.Escape(phrase) + @"(?![\\p{L}\\p{N}])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static string BuildRetrievalQuestion(string original, string? translated)
     {
-        var canonical = ProtectedVocabulary
-            .Where(entry => entry.Names.Any(name => HasExactPhrase(original, name)))
-            .SelectMany(entry => entry.Canonical)
+        var canonical = LoadVocabulary()
+            .Where(entry => HasExactPhrase(original, entry.Term) ||
+                entry.Aliases.Any(alias => HasExactPhrase(original, alias)))
+            .SelectMany(entry => entry.Keywords)
             .Distinct(StringComparer.OrdinalIgnoreCase);
         return string.Join(" ", canonical.Concat(new[] { translated ?? "", original })
             .Where(part => !string.IsNullOrWhiteSpace(part)));
@@ -278,6 +337,15 @@ public sealed class KnowledgeSearch
                     Regex.Escape(hint) + @"(?![\p{L}\p{N}])")))
             .Select(domain => domain.Source)
             .ToList();
+        // Admin-managed terms can explicitly select a documentary category.
+        foreach (var entry in LoadVocabulary())
+        {
+            if (!string.IsNullOrEmpty(entry.Domain) &&
+                (HasExactPhrase(question, entry.Term) ||
+                 entry.Aliases.Any(alias => HasExactPhrase(question, alias))) &&
+                !explicitDomains.Contains(entry.Domain))
+                explicitDomains.Add(entry.Domain);
+        }
         // A broad request for free land is about the grid, even without "Freeland".
         if (Regex.IsMatch(q, @"\b(terrain|terrains|parcelle|parcelles|land|plot|parcel|terreno|terrenos|terreni|grundstück|grundstücke|grundstuck)\b") &&
             Regex.IsMatch(q, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis|gratuito|gratuita|gratuitos|gratuitas|grátis|kostenlos|kostenlose|kostenloses|kostenfreien)\b") &&
