@@ -34,7 +34,26 @@ public sealed class KnowledgeSearch
     };
 
     private static readonly string[] CurseWords = { "malédiction", "malediction", "curse", "cursed" };
-    private static readonly string[] VampireWords = { "vampire", "vampires" };
+    private static readonly string[] VampireWords = { "vampire", "vampires", "vampiro", "vampiros", "vampir", "vampiri" };
+    // Lightweight multilingual query expansion for the most common BloodMoon
+    // topics. The stored editorial facts remain French; the remote AI
+    // translates their meaning when composing its answer.
+    private static readonly (string[] triggers, string[] expansions)[] Synonyms = {
+        (new[] { "terrain", "terrains", "land", "lands", "plot", "parcel",
+                 "parcelle", "parcelas", "terreno", "terrenos", "grundstück", "grundstuck",
+                 "terreno", "terreni" },
+         new[] { "terrain", "freeland", "freelands", "parcelle" }),
+        (new[] { "freeland", "freelands" },
+         new[] { "terrain", "terrains", "freelands" }),
+        (new[] { "devenir", "become", "becoming", "convertirse", "diventare",
+                 "werden", "tornar", "virar" },
+         new[] { "devenir", "transformation" }),
+        (new[] { "vampire", "vampires", "vampiro", "vampiros", "vampir", "vampiri" },
+         new[] { "vampire", "vampires" }),
+        (new[] { "malédiction", "malediction", "curse", "fluch", "maldición", "maldicao",
+                 "maledizione" },
+         new[] { "malédiction", "malediction", "curse" })
+    };
     // The grid and the roleplay game share the name BloodMoon. Do not assume
     // a generic question about "rules" relates to roleplay.
     private static readonly string[] GridGovernanceWords = {
@@ -57,7 +76,10 @@ public sealed class KnowledgeSearch
             found.AddRange(CurseWords);
         if (found.Any(x => VampireWords.Contains(x, StringComparer.Ordinal)))
             found.AddRange(VampireWords);
-        return found.Distinct(StringComparer.Ordinal).Take(12).ToArray();
+        foreach (var (triggers, expansions) in Synonyms)
+            if (found.Any(x => triggers.Contains(x, StringComparer.Ordinal)))
+                found.AddRange(expansions);
+        return found.Distinct(StringComparer.Ordinal).Take(24).ToArray();
     }
 
     // All tokens come from validated words. Never interpolate raw resident FTS syntax.
