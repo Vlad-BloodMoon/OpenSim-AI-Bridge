@@ -24,8 +24,8 @@ V0.1 was built and passed first grid/IM tests on 20 November 2026; other milesto
 - [ ] Verify public chat never triggers paid AI by default.
 
 ## V0.3 — Translation & remote AI
-- [ ] Inspect and test BloodMoon Translator's actual JSON contract.
-- [ ] Create pluggable HTTP translation adapter, language preferences and cache.
+- [x] Recover the known BloodMoon Translator gateway JSON exchange: POST `/translator/translate.php` with `from`, `to`, `text` and `X-BloodMoon-Token`; success contains `ok` and `translatedText`. Response parsing covered by an offline regression test. **The live endpoint's handling of `from=auto` and the bot's gateway authorization are still unverified.**
+- [x] Implement a disabled-by-default BloodMoon HTTP/Azure translation adapter with a private environment token, bounded request timeout and short cache. Translate questions for SQLite knowledge search only; keep original IM for language-of-reply. **Production enablement and live end-to-end tests remain pending.**
 - [ ] Remote IM AI: OpenAI/Groq/OpenRouter Chat Completions adapters and separate secret per bot implemented in GitHub (2026-11-23); **admin-side provider model validation observed on BloodMoon (24 Nov 2026); actual automatic IM fallback during 429 still unverified**. Persistent shared per-provider attempt counters are implemented in SQLite; provider token quotas are not tracked.
 - [ ] UUID allowlist, per-user cooldown and per-bot hourly request limit implemented in initial code; durable per-user/per-model token quotas and audit still needed; the shared per-provider attempt counter is implemented.
 - [ ] Test budget-stop behavior and free-answer fallback.
