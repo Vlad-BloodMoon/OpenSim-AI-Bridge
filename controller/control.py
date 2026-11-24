@@ -171,6 +171,11 @@ def read_settings(install):
             "enableIM": bot.get("EnableIM", True),
             "enableLocalChat": bot.get("EnableLocalChat", True),
             "reconnectEnabled": bot.get("ReconnectEnabled", True),
+            "welcomeEnabled": bot.get("ProximityWelcome", {}).get("Enabled", False),
+            "welcomeRadius": bot.get("ProximityWelcome", {}).get("RadiusMeters", 15),
+            "welcomeDelay": bot.get("ProximityWelcome", {}).get("RepeatDelayMinutes", 30),
+            "welcomeMessage": bot.get("ProximityWelcome", {}).get("Message",
+                "Welcome to BloodMoon, {avatar_name}! I'm your AI assistant, here to answer questions about BloodMoon and its role-playing game. Please send me a private message (IM); I only answer questions via IM, not local chat."),
         }
     except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
         raise ControlError("Unable to read bot settings") from exc
@@ -178,8 +183,11 @@ def read_settings(install):
 
 def save_settings(install, values):
     allowed = {"startMode", "region", "x", "y", "z", "enableIM", "enableLocalChat", "reconnectEnabled"}
-    required_legacy = allowed - {"startMode"}
-    if not isinstance(values, dict) or set(values) not in (allowed, required_legacy):
+    welcome_fields = {"welcomeEnabled", "welcomeRadius", "welcomeDelay", "welcomeMessage"}
+    allowed |= welcome_fields
+    required_legacy = allowed - welcome_fields - {"startMode"}
+    earlier = allowed - welcome_fields
+    if not isinstance(values, dict) or set(values) not in (allowed, earlier, required_legacy):
         raise ControlError("Invalid settings fields")
     start_mode = values.get("startMode", "region")
     if start_mode not in ("region", "last"):
@@ -193,6 +201,18 @@ def save_settings(install, values):
     for key in ("enableIM", "enableLocalChat", "reconnectEnabled"):
         if type(values[key]) is not bool:
             raise ControlError(f"Invalid {key} flag")
+    if welcome_fields.issubset(values):
+        if type(values["welcomeEnabled"]) is not bool:
+            raise ControlError("Invalid welcome activation")
+        if type(values["welcomeRadius"]) is not int or not 5 <= values["welcomeRadius"] <= 30:
+            raise ControlError("Welcome radius must be 5–30 metres")
+        if type(values["welcomeDelay"]) is not int or not 5 <= values["welcomeDelay"] <= 1440:
+            raise ControlError("Welcome cooldown must be 5–1440 minutes")
+        welcome_text = values["welcomeMessage"]
+        if not isinstance(welcome_text, str) or not 1 <= len(welcome_text.strip()) <= 650 or any(
+            ord(c) < 32 and c not in "\\n\\r\\t" for c in welcome_text
+        ):
+            raise ControlError("Welcome message invalid or too long")
     try:
         path, metadata = config_file(install)
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -208,6 +228,13 @@ def save_settings(install, values):
         bot["EnableIM"] = values["enableIM"]
         bot["EnableLocalChat"] = values["enableLocalChat"]
         bot["ReconnectEnabled"] = values["reconnectEnabled"]
+        if welcome_fields.issubset(values):
+            bot["ProximityWelcome"] = {
+                "Enabled": values["welcomeEnabled"],
+                "RadiusMeters": values["welcomeRadius"],
+                "RepeatDelayMinutes": values["welcomeDelay"],
+                "Message": values["welcomeMessage"].strip(),
+            }
         fd, temp = tempfile.mkstemp(prefix=".appsettings-", dir=str(install))
         try:
             os.fchmod(fd, stat.S_IMODE(metadata.st_mode))
