@@ -144,7 +144,7 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
     {
         var retrieval = KnowledgeSearch.BuildRetrievalQuestion(item.original, item.french);
         var expr = KnowledgeSearch.MakeFtsExpression(retrieval);
-        if (expr is null || !expr.Contains("\\"" + item.required + "\\"", StringComparison.Ordinal) ||
+        if (expr is null || !expr.Contains(((char)34) + item.required + ((char)34), StringComparison.Ordinal) ||
             !KnowledgeSearch.DetectDomains(retrieval).Contains(item.domain))
         {
             Console.Error.WriteLine("Protected vocabulary retrieval failed: " + item.original);
