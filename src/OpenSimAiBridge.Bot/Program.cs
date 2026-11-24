@@ -529,10 +529,15 @@ do
         Console.WriteLine($"Connection lost: {e.Reason}");
     };
 
+    // Track full-precision simulator avatar object positions. CoarseLocationUpdate
+    // X/Y fields are 8-bit and cannot locate residents at X > 255 or Y > 255
+    // in OpenSimulator varregions (BloodMoon_Welcome uses e.g. 350,320).
+    client.Settings.World.TrackObjects = true;
+    client.Settings.World.TrackAvatars = true;
+    var pendingNames = new System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource<string>>();
     if (welcomeSettings.Enabled)
     {
         proximityWelcome.ResetObservation();
-        var pendingNames = new System.Collections.Concurrent.ConcurrentDictionary<Guid, TaskCompletionSource<string>>();
         client.Avatars.UUIDNameReply += (_, e) =>
         {
             foreach (var (id, name) in e.Names)
@@ -541,45 +546,37 @@ do
                     pending.TrySetResult(name);
             }
         };
-        client.Grid.CoarseLocationUpdate += (_, e) =>
+    }
+
+    void SendProximityWelcome(Guid id)
+    {
+        var lookup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        pendingNames[id] = lookup;
+        _ = Task.Run(async () =>
         {
-            if (!client.Network.Connected || stop.IsCancellationRequested ||
-                !ReferenceEquals(e.Simulator, client.Network.CurrentSim))
-                return;
-            var matches = proximityWelcome.Observe(
-                DateTimeOffset.UtcNow, Guid.Parse(client.Self.AgentID.ToString()),
-                client.Self.SimPosition, e.Positions);
-            foreach (var id in matches)
+            try
             {
-                var lookup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
-                pendingNames[id] = lookup;
-                _ = Task.Run(async () =>
+                client.Avatars.RequestAvatarName(UUID.Parse(id.ToString()));
+                string? visitorName = null;
+                try { visitorName = await lookup.Task.WaitAsync(TimeSpan.FromSeconds(3), stop.Token); }
+                catch (TimeoutException) { } // Name optional; never expose UUID publicly.
+                if (client.Network.Connected && !stop.IsCancellationRequested)
                 {
-                    try
+                    var message = ProximityWelcome.FormatMessage(welcomeSettings.Message, visitorName);
+                    if (!string.IsNullOrWhiteSpace(message))
                     {
-                        client.Avatars.RequestAvatarName(UUID.Parse(id.ToString()));
-                        string? visitorName = null;
-                        try { visitorName = await lookup.Task.WaitAsync(TimeSpan.FromSeconds(3), stop.Token); }
-                        catch (TimeoutException) { } // Name optional; never expose UUID publicly.
-                        if (client.Network.Connected && !stop.IsCancellationRequested)
-                        {
-                            var text = ProximityWelcome.FormatMessage(welcomeSettings.Message, visitorName);
-                            if (!string.IsNullOrWhiteSpace(text))
-                            {
-                                client.Self.Chat(text, 0, ChatType.Normal, splitLargeMessages: false);
-                                Console.WriteLine("Sent one proximity welcome in local chat.");
-                            }
-                        }
+                        client.Self.Chat(message, 0, ChatType.Normal, splitLargeMessages: false);
+                        Console.WriteLine("Sent one proximity welcome in local chat.");
                     }
-                    catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
-                    catch (Exception ex)
-                    {
-                        Console.Error.WriteLine($"Proximity welcome failed: {ex.GetType().Name}");
-                    }
-                    finally { pendingNames.TryRemove(id, out var ignoredPending); }
-                }, stop.Token);
+                }
             }
-        };
+            catch (OperationCanceledException) when (stop.IsCancellationRequested) { }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"Proximity welcome failed: {ex.GetType().Name}");
+            }
+            finally { pendingNames.TryRemove(id, out var ignoredPending); }
+        }, stop.Token);
     }
 
     if (options.Bot.EnableIM)
@@ -703,9 +700,50 @@ do
             {
                 Console.Error.WriteLine("Warning: login succeeded in a different region than requested.");
             }
+            // Give the simulator time to populate its avatar object cache.
+            // The first poll becomes a baseline, never a mass greeting.
+            var welcomeObserveAfter = DateTimeOffset.UtcNow.AddSeconds(12);
+            var lastWelcomeDiagnostics = DateTimeOffset.MinValue;
+            Simulator? observedWelcomeSim = null;
             while (!stop.IsCancellationRequested && client.Network.Connected && !disconnected)
             {
                 PublishHeartbeat(client, "online");
+                if (welcomeSettings.Enabled)
+                {
+                    var sim = client.Network.CurrentSim;
+                    var now = DateTimeOffset.UtcNow;
+                    if (sim is not null && !ReferenceEquals(sim, observedWelcomeSim))
+                    {
+                        observedWelcomeSim = sim;
+                        welcomeObserveAfter = now.AddSeconds(12);
+                        proximityWelcome.ResetObservation();
+                        Console.WriteLine("Proximity welcome: preparing full-precision avatar tracking.");
+                    }
+                    if (sim is not null && now >= welcomeObserveAfter)
+                    {
+                        // ObjectsAvatars reflects full ObjectUpdate/TerseObjectUpdate
+                        // positions and supports varregions beyond 256 metres.
+                        var nearbyPositions = new Dictionary<UUID, Vector3>();
+                        foreach (var avatar in sim.ObjectsAvatars.Values)
+                        {
+                            if (avatar.ID != UUID.Zero)
+                                nearbyPositions[avatar.ID] = avatar.Position;
+                        }
+                        var matches = proximityWelcome.Observe(
+                            now, Guid.Parse(client.Self.AgentID.ToString()),
+                            client.Self.SimPosition, nearbyPositions);
+                        foreach (var id in matches)
+                            SendProximityWelcome(id);
+                        // Quiet once-per-minute telemetry to differentiate no
+                        // simulator updates from an empty/remote avatar cache.
+                        if (now - lastWelcomeDiagnostics >= TimeSpan.FromMinutes(1))
+                        {
+                            Console.WriteLine($"Proximity welcome: observing {nearbyPositions.Count} avatar objects " +
+                                $"around position {client.Self.SimPosition} in {sim.Name}.");
+                            lastWelcomeDiagnostics = now;
+                        }
+                    }
+                }
                 await Task.Delay(TimeSpan.FromSeconds(2), stop.Token);
             }
         }
