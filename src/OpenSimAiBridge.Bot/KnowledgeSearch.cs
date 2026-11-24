@@ -187,8 +187,8 @@ public sealed class KnowledgeSearch
     }
 
     private static bool HasExactPhrase(string text, string phrase) =>
-        Regex.IsMatch(text, @"(?<![\\p{L}\\p{N}])" +
-            Regex.Escape(phrase) + @"(?![\\p{L}\\p{N}])",
+        Regex.IsMatch(text, @"(?<![\p{L}\p{N}])" +
+            Regex.Escape(phrase) + @"(?![\p{L}\p{N}])",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     public static string BuildRetrievalQuestion(string original, string? translated)
