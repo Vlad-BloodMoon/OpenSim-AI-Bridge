@@ -180,7 +180,7 @@ public sealed class RemoteAiResponder : IDisposable
             // Translate for retrieval only: keep the resident's original IM
             // for the LLM so it can answer in that resident's own language.
             var frenchQuestion = await translator.ToFrenchForSearchAsync(prompt, cancellationToken);
-            var retrievalQuestion = frenchQuestion is null ? prompt : prompt + " " + frenchQuestion;
+            var retrievalQuestion = KnowledgeSearch.BuildRetrievalQuestion(prompt, frenchQuestion);
             var hits = knowledge.Search(retrievalQuestion);
             var context = KnowledgeSearch.BuildContext(hits);
             var history = PreviousTurns(sender, now);
