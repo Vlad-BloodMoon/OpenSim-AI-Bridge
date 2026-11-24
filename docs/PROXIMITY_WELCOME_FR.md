@@ -4,7 +4,7 @@
 
 ## Principe
 
-Chaque avatar bot peut publier **un message de bienvenue en chat local** lorsqu'un résident entre dans son rayon. Dans l'administration HTTPS, sélectionner l'avatar, ouvrir **Configuration → Accueil automatique des visiteurs**, puis renseigner :
+Chaque avatar bot peut publier **un message de bienvenue en chat local** lorsqu'un résident entre dans son rayon. **Correctif varregion (24/11/2026) :** la détection lit désormais les positions complètes des avatars dans le cache d'objets LibreMetaverse plutôt que les seules coordonnées *Coarse Location* (8 bits par axe, insuffisantes au-delà de 255 mètres). Les régions telles que BloodMoon_Welcome où le bot est vers X=350, Y=320 sont ainsi prises en compte. Dans l'administration HTTPS, sélectionner l'avatar, ouvrir **Configuration → Accueil automatique des visiteurs**, puis renseigner :
 
 - **Activer l'accueil** (désactivé par défaut, y compris après mise à jour) ;
 - **Rayon** : 5–20 mètres, valeur initiale 15 m ;
@@ -19,7 +19,7 @@ Le nom provient de `client.Avatars.RequestAvatarName` et du retour `UUIDNameRepl
 
 ## Anti-répétition
 
-- `client.Grid.CoarseLocationUpdate` transmet un **instantané** des positions des avatars de la région ; le bot ne traite que sa région active.
+- Le cache `client.Network.CurrentSim.ObjectsAvatars` est alimenté par les mises à jour `ObjectUpdate` et `ImprovedTerseObjectUpdate` et fournit des positions complètes `Vector3`. Le bot le consulte toutes les 2 secondes, après 12 secondes de stabilisation à la connexion, et uniquement pour sa région active.
 - Au premier instantané après connexion, les avatars déjà présents sont considérés comme connus ; aucun accueil en masse.
 - Le bot ne se salue jamais lui-même ; les identités sont distinguées par UUID.
 - L'entrée dans le rayon déclenche au maximum **un accueil**, qui est mémorisé même si les mises à jour de positions continuent.
@@ -30,7 +30,7 @@ Le nom provient de `client.Avatars.RequestAvatarName` et du retour `UUIDNameRepl
 
 ## Portée et limites techniques
 
-`CoarseLocationUpdate` permet de connaître les coordonnées approximatives ; la mesure est en XY, sans filtrer l'étage Z puisque les coordonnées Z du protocole sont quantifiées. Une autre personne sur un étage très différent peut donc déclencher un accueil si elle se trouve au même endroit en plan. Les données ne garantissent pas une détection instantanée : elles dépendent des instantanés envoyés par le simulateur OpenSimulator.
+La mesure est en XY, sans filtrer l'étage Z pour conserver le comportement d'origine. Les positions d'avatars assis ou sur un objet mobile méritent un test en situation réelle. Une autre personne sur un étage très différent peut donc déclencher un accueil si elle se trouve au même endroit en plan. Les données ne garantissent pas une détection instantanée : elles dépendent des instantanés envoyés par le simulateur OpenSimulator.
 
 `Self.Chat(message, 0, ChatType.Normal)` envoie sur le canal 0 en chat normal, **pas en IM**. Le rayon est limité à 20 m pour rester cohérent avec le chat normal usuel ; la portée effective dépend des paramètres de la région.
 
@@ -45,3 +45,5 @@ La recherche des noms par paquet UUID n'assure pas le retour du *Display Name*. 
 5. Tester : résident déjà présent au démarrage → silence ; arrivée à 15 mètres → une annonce en chat local ; attente à proximité → aucune répétition ; sortie puis retour rapide → silence ; retour après délai → nouvel accueil.
 
 Il reste indispensable de valider les paquets de positions et l'émission chat avec la version OpenSimulator du serveur concerné. **Un build CI vert ne remplace pas les tests réels en région.**
+
+Les journaux comportent un message `Proximity welcome: observing N avatar objects around position ...` environ une fois par minute lorsque la fonction est active, ce qui permet de vérifier que les données de présence parviennent effectivement au client. `N=0` lors d'une présence connue en région suggère de vérifier le flux d'objets, la connexion du bot et le mode de suivi LibreMetaverse.
