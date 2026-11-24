@@ -88,6 +88,10 @@ load_provider_key openrouter OSAI_OPENROUTER_API_KEY
 load_provider_key gemini OSAI_GEMINI_API_KEY
 load_provider_key openai OSAI_OPENAI_API_KEY
 
+# Optional private token for the dedicated BloodMoon AI translation gateway.
+# It is not the Azure subscription key and is never written to Web files.
+load_provider_key bloodmoon-translator OSAI_BLOODMOON_TRANSLATOR_TOKEN
+
 # The maintenance check is repeated immediately before launch.
 if [[ -e "$LOCK_FILE" ]]; then
   echo "OpenSim AI Bridge: maintenance activated; refusing to connect."
