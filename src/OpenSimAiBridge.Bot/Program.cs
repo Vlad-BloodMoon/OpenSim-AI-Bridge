@@ -76,6 +76,14 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
         Console.Error.WriteLine("Knowledge query tokenization failed.");
         return 1;
     }
+    var englishLand = KnowledgeSearch.MakeFtsExpression("How can I get land?");
+    var spanishVampire = KnowledgeSearch.MakeFtsExpression("Como convertirse en vampiro?");
+    if (englishLand is null || !englishLand.Contains("\"terrain\"", StringComparison.Ordinal) ||
+        spanishVampire is null || !spanishVampire.Contains("\"vampire\"", StringComparison.Ordinal))
+    {
+        Console.Error.WriteLine("Multilingual search expansion for French editorial notes failed.");
+        return 1;
+    }
     var context = KnowledgeSearch.BuildContext(new[] {
         new KnowledgeHit("https://bloodmoonpack.com/roleplay/pages/guide.php",
                          "Grimoire", "Les vampires jouent un rôle important.", "roleplay")
