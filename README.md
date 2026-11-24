@@ -6,7 +6,7 @@
 
 **EN —** A platform for running and managing one or more headless OpenSimulator avatars, answering residents with remote AI models and retrieving your grid's documentation. **No local LLM inference** is required.
 
-> **Statut / Status — 24 November 2026:** active BloodMoon pilot, with a successfully built Linux x64 artifact and automated regression tests. **Not yet a general-purpose production release.** Features marked *planned* below must not be interpreted as available. Provider quotas, privacy, deployment hardening and OpenSimulator compatibility must be evaluated on each installation.
+> **Release / Version — v1.0.0 (24 November 2026):** first **public stable-tagged GitHub Release**, with a Linux x64 .NET 8 distribution, automated tests, and BloodMoon in-world validation of visitor greeting and facing. **This is not a claim of universal production certification.** Advanced Web administration still requires environment-specific setup and security review. Provider quotas, privacy, deployment hardening and OpenSimulator compatibility must be evaluated on each installation.
 
 ## What it does / Fonctionnalités
 
@@ -59,9 +59,15 @@ Question -> dedicated PHP translation gateway -> existing Azure Translator
 
 **BloodMoon is the reference deployment, not a plug-and-play hosted service.** The included Azure translation gateway relies on a pre-existing, private BloodMoon Translator configuration. For another grid, adapt or disable that optional integration. Never commit or publish your API tokens, avatar passwords, IM history, private indexes or SQLite data.
 
+## Download / Téléchargement
+
+**[GitHub Releases — v1.0.0](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/releases/tag/v1.0.0)** · [New-install smoke-test guide (FR/EN)](docs/RELEASE_INSTALL_FR_EN.md) · [Release notes (FR/EN)](docs/RELEASE_NOTES_V1.0.0.md).
+
+The public archive is a framework-dependent Linux x64 ZIP with an SHA-256 checksum, **not** an unattended universal Web installer. The operator must supply their own grid credentials, protect configuration and obtain access to any remote AI service they enable. No real passwords, private indexes or paid-provider keys are shipped.
+
 ## Getting started / Démarrage
 
-1. Read the [installation instructions (FR)](docs/INSTALLATION_V01_FR.md) and [architecture](docs/ARCHITECTURE.md). Use a **test avatar and test region** first.
+1. Read the **[v1.0.0 installation / standalone evaluation guide (FR/EN)](docs/RELEASE_INSTALL_FR_EN.md)** and [architecture](docs/ARCHITECTURE.md). Use a **test avatar and test region** first. The older [V0.1 guide](docs/INSTALLATION_V01_FR.md) is historical.
 2. Configure `Grid.LoginUri`, avatar identity and starting location in a **private** `appsettings.json`, using [the example](config/appsettings.example.json). Store the avatar password outside Git and supply it using the documented launcher.
 3. Build the .NET 8 project or retrieve the **successful Linux x64 artifact** from [GitHub Actions](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/actions). The artifacts are framework-dependent and require the .NET 8 runtime.
 4. For Web management and multiple avatars, read [Web setup](docs/WEB_INSTALL_V02_FR.md) and [multi-avatar operations](docs/MULTI_BOT_V02_FR.md). Keep the controller on a local Unix socket, not a public network port.
@@ -104,6 +110,8 @@ The tests do not require Firestorm or a live grid. A successful run does **not**
 
 ## Documentation / Documentation
 
+- [First public release v1.0.0 / notes FR/EN](docs/RELEASE_NOTES_V1.0.0.md)
+- [v1.0.0 standalone installation and evaluation FR/EN](docs/RELEASE_INSTALL_FR_EN.md)
 - [Overview of the implemented architecture](docs/ARCHITECTURE.md)
 - [Project status and roadmap](docs/ROADMAP.md)
 - [Installation (FR)](docs/INSTALLATION_V01_FR.md)
