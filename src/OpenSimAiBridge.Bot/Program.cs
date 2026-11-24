@@ -559,7 +559,7 @@ do
         };
     }
 
-    void SendProximityWelcome(Guid id)
+    void SendProximityWelcome(Guid id, Simulator observedSim)
     {
         var lookup = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
         pendingNames[id] = lookup;
@@ -571,8 +571,42 @@ do
                 string? visitorName = null;
                 try { visitorName = await lookup.Task.WaitAsync(TimeSpan.FromSeconds(3), stop.Token); }
                 catch (TimeoutException) { } // Name optional; never expose UUID publicly.
-                if (client.Network.Connected && !stop.IsCancellationRequested)
+                if (client.Network.Connected && !stop.IsCancellationRequested &&
+                    ReferenceEquals(client.Network.CurrentSim, observedSim))
                 {
+                    // Turn only once per greeting, not on every object movement.
+                    // Use the visitor's current full-resolution position, not a stale
+                    // snapshot, and leave local chat working if rotation is refused.
+                    if (welcomeSettings.FaceVisitor && client.Self.SittingOn == 0)
+                    {
+                        var target = observedSim.ObjectsAvatars.Values
+                            .FirstOrDefault(avatar => Guid.Parse(avatar.ID.ToString()) == id);
+                        if (target is not null)
+                        {
+                            var selfPos = client.Self.SimPosition;
+                            var visitorPos = target.Position;
+                            var dx = visitorPos.X - selfPos.X;
+                            var dy = visitorPos.Y - selfPos.Y;
+                            var maxDistance = welcomeSettings.RadiusMeters;
+                            if (Math.Abs(visitorPos.Z - selfPos.Z) <= 4 &&
+                                dx * dx + dy * dy >= 1 &&
+                                dx * dx + dy * dy <= maxDistance * maxDistance)
+                            {
+                                try
+                                {
+                                    // Keep the target at the bot's Z to rotate only on
+                                    // the horizontal plane, without tipping the body.
+                                    var levelTarget = new Vector3(visitorPos.X, visitorPos.Y, selfPos.Z);
+                                    if (client.Self.Movement.TurnToward(levelTarget))
+                                        Console.WriteLine("Proximity welcome: turned toward visitor.");
+                                }
+                                catch (Exception ex)
+                                {
+                                    Console.Error.WriteLine($"Proximity welcome turn failed: {ex.GetType().Name}");
+                                }
+                            }
+                        }
+                    }
                     var message = ProximityWelcome.FormatMessage(welcomeSettings.Message, visitorName);
                     if (!string.IsNullOrWhiteSpace(message))
                     {
@@ -744,7 +778,7 @@ do
                             now, Guid.Parse(client.Self.AgentID.ToString()),
                             client.Self.SimPosition, nearbyPositions);
                         foreach (var id in matches)
-                            SendProximityWelcome(id);
+                            SendProximityWelcome(id, sim);
                         // Quiet once-per-minute telemetry to differentiate no
                         // simulator updates from an empty/remote avatar cache.
                         if (now - lastWelcomeDiagnostics >= TimeSpan.FromMinutes(1))
