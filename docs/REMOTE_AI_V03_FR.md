@@ -1,5 +1,7 @@
 # IA distante pour les avatars — première version expérimentale (23 novembre 2026)
 
+> **Guide du pilote IA initial (23/11/2026).** Les instructions ci-dessous précèdent l'administration **multi-fournisseurs** et peuvent décrire l'ancien mode par avatar. Pour la configuration actuelle des modèles et des clés séparées, consulter [Multi-fournisseurs](MULTI_PROVIDER_ROUTING_FR.md), [README](../README.md) et [Architecture](ARCHITECTURE.md). Ne pas remplacer la configuration multi-IA de production par l'ancien formulaire.
+
 ## Objectif
 
 Faire de **BloodMoon AI** un véritable assistant IA répondant aux **messages privés (IM)** dans OpenSimulator, sans installer de modèle local (pas d'Ollama). Chaque bot possède une configuration IA et une clé séparées. L'IA est **désactivée par défaut** ; elle ne s'active qu'après configuration explicite.
