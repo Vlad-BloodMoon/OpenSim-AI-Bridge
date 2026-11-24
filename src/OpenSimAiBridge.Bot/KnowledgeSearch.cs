@@ -135,21 +135,77 @@ public sealed class KnowledgeSearch
         return score;
     }
 
-    // Freelands are a BloodMoon grid service, not OpenSimulator's technical
-    // terrain/parcel administration. The Handbook may coincidentally match
-    // "terrain", but must not be cited as a Freeland application guide.
-    public static IReadOnlyList<KnowledgeHit> FocusFreelandSources(
+    // A query may involve more than one domain. Route by intent rather than
+    // matching broad words such as "terrain", which can mean either a BloodMoon
+    // resident Freeland or an OpenSimulator terrain console command.
+    private static readonly (string Source, string[] Hints)[] DomainHints = {
+        ("handbook", new[] {
+            "opensimulator", "opensim", "robust", "hypergrid", "osgrid", "ossl",
+            "lsl", "oar", "iar", "ini", "mysql", "sqlite", "proxmox",
+            "console", "commandes serveur", "server commands", "script",
+            "scripts", "module", "modules", "configuration technique",
+            "configurer un simulateur", "installer un simulateur",
+            "region.ini", "opensim.ini", "firestorm",
+            "simulator", "simulator configuration", "server setup"
+        }),
+        ("marketplace", new[] {
+            "marketplace", "magic box", "boutique", "vendeur", "vendeurs",
+            "acheter un objet", "vendre un objet", "mise en vente",
+            "commande marketplace", "livraison marketplace", "seller",
+            "buy an item", "sell an item", "storefront"
+        }),
+        ("roleplay", new[] {
+            "roleplay", "role play", "vampire", "vampires", "lycan", "lycans",
+            "malédiction", "malediction", "curse", "grimoire", "clan",
+            "clans", "âme", "ames", "soul", "vital liquid", "potion",
+            "potions", "revenant", "destroyed", "hud vampire",
+            "hud lycan", "bloodmoon pack", "créature", "creature"
+        }),
+        ("grid", new[] {
+            "freeland", "freelands", "terrain gratuit", "terrains gratuits",
+            "parcelle gratuite", "parcelles gratuites", "free land",
+            "free plot", "free parcel", "terreno gratis",
+            "bloodmoon resident", "bloodmoon grid", "grille bloodmoon",
+            "équipe bloodmoon", "equipe bloodmoon", "team bloodmoon",
+            "rejoindre la grille", "join the grid", "créer un compte",
+            "creer un compte", "règlement de la grille",
+            "reglement de la grille", "rgpd", "gdpr",
+            "politique de confidentialité", "privacy policy"
+        })
+    };
+
+    public static IReadOnlyList<string> DetectDomains(string question)
+    {
+        var q = question.ToLowerInvariant();
+        // Match whole words or whole phrases, not substrings inside unrelated words.
+        var explicitDomains = DomainHints
+            .Where(domain => domain.Hints.Any(hint =>
+                Regex.IsMatch(q, @"(?<![\p{L}\p{N}])" +
+                    Regex.Escape(hint) + @"(?![\p{L}\p{N}])")))
+            .Select(domain => domain.Source)
+            .ToList();
+        // A broad request for free land is about the grid, even without "Freeland".
+        if (Regex.IsMatch(q, @"\b(terrain|terrains|parcelle|parcelles|land|plot|parcel|terreno|terrenos)\b") &&
+            Regex.IsMatch(q, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis)\b") &&
+            !explicitDomains.Contains("grid"))
+            explicitDomains.Add("grid");
+        // For truly ambiguous questions, keep all sources available.
+        return explicitDomains;
+    }
+
+    public static IReadOnlyList<KnowledgeHit> RouteSources(
         string question, IReadOnlyList<KnowledgeHit> hits)
     {
-        var query = question.ToLowerInvariant();
-        bool freeland = Regex.IsMatch(query, @"\bfreelands?\b", RegexOptions.IgnoreCase) ||
-            (Regex.IsMatch(query, @"\b(terrain|terrains|parcelle|parcelles|land|plot|terreno|terrenos)\b") &&
-             Regex.IsMatch(query, @"\b(gratuit|gratuite|gratuits|gratuites|free|gratis)\b"));
-        if (!freeland) return hits;
-        var gridHits = hits.Where(hit =>
-            hit.Source is "grid" or "local_grid_bloodmoon").ToArray();
-        // Fail open to ordinary retrieval when grid sources are absent.
-        return gridHits.Length > 0 ? gridHits : hits;
+        var domains = DetectDomains(question);
+        if (domains.Count == 0) return hits;
+        var matches = hits.Where(hit => domains.Any(domain =>
+            hit.Source == domain || hit.Source == "local_" +
+                (domain == "grid" ? "grid_bloodmoon" :
+                 domain == "roleplay" ? "roleplay_bloodmoon" :
+                 domain == "handbook" ? "opensim" : "marketplace"))).ToArray();
+        // Never discard all retrieval hits when the targeted domain has no
+        // indexed coverage. Mixed questions keep all explicitly relevant domains.
+        return matches.Length > 0 ? matches : hits;
     }
 
     private static string DocumentKey(KnowledgeHit hit, bool curseQuestion)
@@ -208,10 +264,8 @@ public sealed class KnowledgeSearch
                 if (!publicPage && !localNote) continue;
                 candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), source));
             }
-            // Use the official grid/Freeland corpus when it contains answers.
-            // This prevents generic OpenSimulator terrain commands from leaking
-            // into instructions for obtaining a BloodMoon free plot.
-            var relevantCandidates = FocusFreelandSources(question, candidates);
+            // Keep only topically relevant indexed domains when they exist.
+            var relevantCandidates = RouteSources(question, candidates);
             // Re-rank over a wider pool and deduplicate URLs, so one noisy page
             // cannot occupy all three context slots. Preserve order for ties.
             return relevantCandidates.Select((hit, index) => new {
