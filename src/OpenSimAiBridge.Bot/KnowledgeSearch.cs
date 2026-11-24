@@ -77,6 +77,7 @@ public sealed class KnowledgeSearch
         var url = hit.Url;
         var body = hit.Excerpt;
         var score = 0.0;
+        if (hit.Source.StartsWith("local_", StringComparison.Ordinal)) score += 125;
         foreach (var word in words)
         {
             if (title.Contains(word, StringComparison.OrdinalIgnoreCase)) score += 35;
@@ -85,7 +86,8 @@ public sealed class KnowledgeSearch
         // A question about game rules needs the manual, not the dynamic homepage.
         if (curseQuestion)
         {
-            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase)) score += 70;
+            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase) ||
+                hit.Source.Equals("local_roleplay_bloodmoon", StringComparison.OrdinalIgnoreCase)) score += 70;
             if (ContainsAny(title, CurseWords) || ContainsAny(url, new[] { "curse", "malediction", "malédiction" }))
                 score += 75;
             if (url.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) score += 30;
@@ -99,12 +101,14 @@ public sealed class KnowledgeSearch
         if (governanceQuestion)
         {
             // Grid governance/legal/privacy documentation outranks RP fiction.
-            if (hit.Source.Equals("grid", StringComparison.OrdinalIgnoreCase)) score += 115;
+            if (hit.Source.Equals("grid", StringComparison.OrdinalIgnoreCase) ||
+                hit.Source.Equals("local_grid_bloodmoon", StringComparison.OrdinalIgnoreCase)) score += 115;
             if (ContainsAny(title, GridGovernanceWords) || ContainsAny(url, new[] {
                 "privacy", "confidential", "rgpd", "rules", "reglement", "terms",
                 "legal", "mentions-legales", "politique"
             })) score += 75;
-            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase)) score -= 90;
+            if (hit.Source.Equals("roleplay", StringComparison.OrdinalIgnoreCase) ||
+                hit.Source.Equals("local_roleplay_bloodmoon", StringComparison.OrdinalIgnoreCase)) score -= 90;
         }
         return score;
     }
@@ -154,11 +158,16 @@ public sealed class KnowledgeSearch
             while (rows.Read())
             {
                 var url = rows.GetString(0);
-                if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)
-                    || parsed.Scheme != Uri.UriSchemeHttps
-                    || !string.Equals(parsed.Host, "bloodmoonpack.com", StringComparison.OrdinalIgnoreCase))
-                    continue;
-                candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), rows.GetString(3)));
+                var source = rows.GetString(3);
+                if (!Uri.TryCreate(url, UriKind.Absolute, out var parsed)) continue;
+                var publicPage = parsed.Scheme == Uri.UriSchemeHttps &&
+                    string.Equals(parsed.Host, "bloodmoonpack.com", StringComparison.OrdinalIgnoreCase);
+                var localNote = parsed.Scheme == "knowledge" &&
+                    source.StartsWith("local_", StringComparison.Ordinal) &&
+                    string.Equals(parsed.Host, source["local_".Length..], StringComparison.Ordinal) &&
+                    Regex.IsMatch(parsed.AbsolutePath, @"^/[a-zA-Z0-9À-ÿ_.-]{1,100}\.txt$");
+                if (!publicPage && !localNote) continue;
+                candidates.Add(new KnowledgeHit(url, rows.GetString(1), rows.GetString(2), source));
             }
             // Re-rank over a wider pool and deduplicate URLs, so one noisy page
             // cannot occupy all three context slots. Preserve order for ties.
@@ -192,7 +201,10 @@ public sealed class KnowledgeSearch
         {
             var title = hit.Title.Replace("\r", " ").Replace("\n", " ");
             var text = hit.Excerpt.Replace("\0", "").Trim();
-            lines.Add($"SOURCE: {hit.Url}\nTITRE: {title}\nCONTENU: {text}");
+            var reference = hit.Source.StartsWith("local_", StringComparison.Ordinal)
+                ? $"FICHE INTERNE BLOODMOON : {hit.Source["local_".Length..]}/{hit.Url.Split('/').Last()} (pas de lien public)"
+                : $"SOURCE: {hit.Url}";
+            lines.Add($"{reference}\nTITRE: {title}\nCONTENU: {text}");
         }
         return string.Join("\n\n", lines);
     }
