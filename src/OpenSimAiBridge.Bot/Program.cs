@@ -576,7 +576,7 @@ do
                     {
                         Console.Error.WriteLine($"Proximity welcome failed: {ex.GetType().Name}");
                     }
-                    finally { pendingNames.TryRemove(id, out _); }
+                    finally { pendingNames.TryRemove(id, out var ignoredPending); }
                 }, stop.Token);
             }
         };
