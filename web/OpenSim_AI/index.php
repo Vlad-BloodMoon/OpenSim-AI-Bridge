@@ -361,6 +361,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'enableIM' => ($_POST['enableIM'] ?? '') === '1',
                     'enableLocalChat' => ($_POST['enableLocalChat'] ?? '') === '1',
                     'reconnectEnabled' => ($_POST['reconnectEnabled'] ?? '') === '1',
+                    'welcomeEnabled' => ($_POST['welcomeEnabled'] ?? '') === '1',
+                    'welcomeRadius' => filter_var($_POST['welcomeRadius'] ?? '', FILTER_VALIDATE_INT),
+                    'welcomeDelay' => filter_var($_POST['welcomeDelay'] ?? '', FILTER_VALIDATE_INT),
+                    'welcomeMessage' => is_string($_POST['welcomeMessage'] ?? null) ? trim($_POST['welcomeMessage']) : '',
                 ];
                 $response = request_control('save_settings', false, $settings, $selectedBot);
                 if ($response['ok'] ?? false) {
@@ -728,6 +732,19 @@ textarea{resize:vertical}
 <?php foreach (['enableIM' => 'Répondre aux IM', 'enableLocalChat' => 'Observer le chat local', 'reconnectEnabled' => 'Reconnexion automatique après déconnexion'] as $key => $label): ?>
 <label style="margin:.6rem 0"><input type="checkbox" name="<?= esc($key) ?>" value="1" <?= !empty($botSettings[$key]) ? 'checked' : '' ?>> <?= esc($label) ?></label>
 <?php endforeach ?>
+</fieldset>
+<fieldset><legend>Accueil automatique des visiteurs — chat local</legend>
+<p class="muted">Le bot accueille uniquement les nouveaux avatars entrant à proximité. Pas d'appel IA et aucune réponse aux questions dans le chat local. L'activation et les changements nécessitent un redémarrage de cet avatar. Le message est indépendant pour chaque bot.</p>
+<label style="margin:.6rem 0"><input type="checkbox" name="welcomeEnabled" value="1" <?= !empty($botSettings['welcomeEnabled']) ? 'checked' : '' ?>> Activer l'accueil automatique</label>
+<div class="grid" style="margin:1rem 0">
+<div><label for="welcomeRadius">Rayon de détection (5–30 mètres)</label>
+<input type="number" id="welcomeRadius" name="welcomeRadius" min="5" max="30" required value="<?= (int)($botSettings['welcomeRadius'] ?? 15) ?>"></div>
+<div><label for="welcomeDelay">Délai avant un nouvel accueil après une sortie (5–1440 min)</label>
+<input type="number" id="welcomeDelay" name="welcomeDelay" min="5" max="1440" required value="<?= (int)($botSettings['welcomeDelay'] ?? 30) ?>"></div>
+</div>
+<label for="welcomeMessage">Message de bienvenue en chat local</label>
+<textarea id="welcomeMessage" name="welcomeMessage" rows="4" maxlength="650" required><?= esc((string)($botSettings['welcomeMessage'] ?? '')) ?></textarea>
+<p class="muted">Utilise <code>{avatar_name}</code> pour afficher le nom du résident. Si son nom n'est pas disponible, le message reste lisible sans UUID. Les visiteurs déjà présents au démarrage ne sont pas salués automatiquement.</p>
 </fieldset>
 <button name="action" value="save_settings">Enregistrer la configuration</button>
 </form>
