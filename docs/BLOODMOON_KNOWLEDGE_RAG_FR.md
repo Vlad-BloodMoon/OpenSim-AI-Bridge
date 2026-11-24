@@ -176,3 +176,13 @@ Le code .NET `KnowledgeSearch.cs` classe maintenant les questions selon des indi
 - En l'absence de résultats pour un domaine détecté, les résultats ordinaires restent accessibles ; le moteur ne doit donc pas présenter ce filtrage comme une preuve d'exactitude des informations.
 
 C'est un **routage heuristique**, sans modèle local ni appel supplémentaire à une API IA. La recherche SQLite FTS5 et les données indexées ne changent pas ; seule la sélection des passages transmis au modèle distant change. Pour bénéficier du correctif, il faut déployer une **nouvelle DLL .NET** après succès de GitHub Actions et valider une réponse IM réelle. Il n'est pas nécessaire de réindexer ni de supprimer la base de connaissances.
+
+## Recherche multilingue des fiches TXT — 24 novembre 2026
+
+La langue des fiches n'impose pas la langue des questions ou des réponses. Le moteur de réponse distant reçoit la consigne de répondre dans la langue du résident. **Pour retrouver le bon extrait avant génération**, `KnowledgeSearch.cs` étend les termes pertinents des questions dans les six langues usuelles du site : français, anglais, espagnol, allemand, italien et portugais, sur les thèmes documentés (Freelands, terrain, équipe, renouvellement, créatures et malédictions, achats/ventes/livraisons, simulateurs). Les termes éditoriaux canoniques sont alors recherchés dans les mêmes TXT, sans duplication ni appel de traduction supplémentaire.
+
+La détection du domaine documentaire fonctionne également avec ces termes multilingues. Le filtre de catégorie est maintenant appliqué **dans SQLite avant la limite de 100 passages**, pour éviter que de nombreuses pages techniques masquent les fiches de la grille. Si aucun extrait de la catégorie ne correspond, une recherche générale est tentée ; aucun document existant n'est supprimé.
+
+Le test hors ligne `--verify-knowledge` contient des questions sur les Freelands et la malédiction dans les six langues, avec contrôle du routage et de la présence des mots français canoniques dans l'expression FTS.
+
+**Limite à connaître :** c'est un dictionnaire de notions, pas un traducteur universel. Les nouveaux sujets ou formulations inconnues nécessiteront un enrichissement lexical ou une autre stratégie de recherche. Le respect de la langue de réponse par l'IA reste à valider en IM réel. Cette évolution nécessite le déploiement d'une nouvelle DLL après succès CI ; les TXT, le timer et la base ne changent pas.
