@@ -1,5 +1,7 @@
 # Architecture prévue — base de connaissances BloodMoon (RAG)
 
+> **Mise au point du 24/11/2026 :** les premières sections ci-dessous sont le plan historique. Un index SQLite FTS5, l'import de fiches TXT, la traduction Azure par `ai-translate.php` et le vocabulaire protégé administrable sont désormais implémentés et certains ont été testés sur BloodMoon. Les notes d'implémentation en fin de document et le [README](../README.md) font foi sur l'état actuel ; ne pas interpréter « non déployée » du plan initial comme le statut de l'outil.
+
 État : conception, non encore déployée. Les bots répondent actuellement par IM avec Groq ; cette page décrit la prochaine fonctionnalité.
 
 ## Finalité
