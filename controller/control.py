@@ -23,9 +23,10 @@ import tempfile
 import time
 import multi_bot
 import provider_profiles
+import protected_terms
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -681,6 +682,21 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
         return read_multi_ai_settings(install)
     if command == "save_multi_ai_settings":
         return save_multi_ai_settings(install, settings)
+    if command == "vocabulary_list":
+        try:
+            return {"entries": protected_terms.read(install)}
+        except protected_terms.TermsError as exc:
+            raise ControlError(str(exc)) from exc
+    if command == "vocabulary_upsert":
+        try:
+            return protected_terms.upsert(install, settings)
+        except protected_terms.TermsError as exc:
+            raise ControlError(str(exc)) from exc
+    if command == "vocabulary_delete":
+        try:
+            return protected_terms.delete(install, settings)
+        except protected_terms.TermsError as exc:
+            raise ControlError(str(exc)) from exc
     if command == "knowledge_status":
         return knowledge_status(install)
     if command == "knowledge_refresh":
