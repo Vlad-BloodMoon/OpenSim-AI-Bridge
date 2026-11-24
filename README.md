@@ -109,6 +109,7 @@ The tests do not require Firestorm or a live grid. A successful run does **not**
 - [Knowledge, Azure and editable vocabulary (FR)](docs/BLOODMOON_KNOWLEDGE_RAG_FR.md)
 - [Initial requirements (FR)](docs/CAHIER_DES_CHARGES_FR.md) and [initial requirements (EN)](docs/REQUIREMENTS_EN.md) — **historical specifications**, not current feature checklists
 - [Security](SECURITY.md)
+- [Repository audit and cleanup record (FR)](docs/AUDIT_2026-11-24_FR.md)
 
 ## Contributing / Contribution
 
