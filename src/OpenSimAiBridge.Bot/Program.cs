@@ -410,7 +410,13 @@ do
 
         login.URI = options.Grid.LoginUri;
         var location = options.Grid.StartLocation;
-        if (!string.IsNullOrWhiteSpace(location.RegionName))
+        // "last" is resolved by the OpenSimulator login service from the
+        // avatar's last location; no local location cache is necessary.
+        if (string.Equals(location.Mode, "Last", StringComparison.OrdinalIgnoreCase))
+        {
+            login.Start = "last";
+        }
+        else if (!string.IsNullOrWhiteSpace(location.RegionName))
         {
             login.Start = NetworkManager.StartLocation(
                 location.RegionName,
@@ -436,7 +442,8 @@ do
         {
             Console.WriteLine($"Connected in {client.Network.CurrentSim?.Name} at {client.Self.SimPosition}");
             PublishHeartbeat(client, "online");
-            if (!string.IsNullOrWhiteSpace(location.RegionName) &&
+            if (!string.Equals(location.Mode, "Last", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(location.RegionName) &&
                 !string.Equals(client.Network.CurrentSim?.Name, location.RegionName, StringComparison.OrdinalIgnoreCase))
             {
                 Console.Error.WriteLine("Warning: login succeeded in a different region than requested.");
@@ -494,6 +501,8 @@ public sealed class GridOptions
 }
 public sealed class StartOptions
 {
+    // "Region" preserves all existing configurations without an explicit Mode.
+    public string Mode { get; set; } = "Region";
     public string RegionName { get; set; } = "";
     public StartPosition Position { get; set; } = new();
 }
