@@ -125,3 +125,41 @@ Si la base n'existe pas, n'est pas accessible ou est temporairement verrouillée
 Déploiement à distinguer de l'indexation : **la modification du code C# nécessite une nouvelle DLL .NET**, donc une maintenance contrôlée des avatars lors d'une validation en production. Le seul téléchargement du fichier Python ou PHP ne permet pas d'activer la recherche en IM. Tester l'index SQLite et la visibilité du chemin sous le compte des services avant de relancer les avatars. Aucune clé OpenRouter n'est activée ou migrée par cette phase ; la comparaison des modèles gratuits et des quotas est à organiser séparément.
 
 L'administration documentaire distingue désormais un travail `activating` d'un travail terminé, avec résultat `success` ou `exit-code` et heure de fin systemd. Ce résultat résume les erreurs de processus, mais ne garantit pas l'exhaustivité du crawl ; le contrôle des compteurs reste utile.
+
+
+## Fiches TXT locales privées — fonctionnement et utilisation (24 novembre 2026)
+
+Cette fonctionnalité est **implémentée dans le code** (à distinguer de son état d'activation sur chaque serveur). Elle complète les quatre sources Web publiques et les PDF, dans la **même base SQLite** `/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.db`, consultée par les bots lors de leurs réponses IM. Aucun modèle IA local n'est installé.
+
+### Où déposer les documents
+
+```text
+/var/www/BloodMoon/AI_Knowledge/
+├── grid_bloodmoon/      # Portail et fonctionnement de la grille BloodMoon
+├── roleplay_bloodmoon/  # Règles et univers du roleplay BloodMoon
+├── opensim/             # OpenSimulator et documentation technique
+└── marketplace/         # Fonctionnement de la Marketplace
+```
+
+Déposer un document texte encodé en **UTF-8**, avec extension `.txt`, dans le dossier correspondant. Exemple : `roleplay_bloodmoon/regles-vampires.txt`. Prévoir un titre et un texte explicite : le moteur utilise le nom du fichier comme titre en remplaçant les traits d'union et underscores par des espaces. Le fichier doit contenir **au moins 20 caractères non blancs** pour être indexé. Une fiche peut être rédigée en français ; le modèle distant pourra répondre dans la langue du résident, sans garantie de qualité de traduction.
+
+**Sécurité et limites du code :** nom de fichier de 1 à 100 caractères respectant les caractères autorisés (lettres, chiffres, accents, point, tiret, underscore) et se terminant par `.txt`, taille maximale de **256 000 octets par fichier**, **500 fichiers utiles au total**. Pas de sous-dossiers récursifs ni de liens symboliques. Ne jamais mettre de secrets, d'identifiants de connexion ou de données personnelles dans ces fiches : leur contenu peut être transmis sous forme d'extraits aux fournisseurs IA distants lors d'une question pertinente.
+
+Les répertoires et fichiers créés par `scripts/install-local-knowledge.sh` sont privés (dossiers `0700` au nom de l'utilisateur bot, accès HTTP refusé en défense supplémentaire). Le dossier se trouve sous `/var/www` pour des raisons historiques, mais **il ne constitue pas une bibliothèque téléchargeable**. Déposer les fichiers via SSH/SFTP avec les droits du compte autorisé ; ne jamais rendre ces dossiers accessibles à `www-data` pour faciliter un upload.
+
+### Actualisation
+
+- **Automatique :** `opensim-ai-bridge-local-knowledge.timer` réexécute le service oneshot `opensim-ai-bridge-local-knowledge.service` environ cinq minutes après la dernière exécution (temporisation avec précision de 30 secondes).
+- **Manuelle :** administration `/OpenSim_AI/?page=knowledge` → **Réindexer les fiches TXT maintenant** ; cela lance la même tâche sans interrompre les bots.
+- **CLI (diagnostic) :** `python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py import-local`, puis `python3 /home/louna49400/OpenSim-AI-Bridge/knowledge/knowledge_cli.py status`, en utilisant le compte autorisé à lire les dossiers et écrire l'index SQLite.
+- **Vérification du service :** `systemctl status opensim-ai-bridge-local-knowledge.timer opensim-ai-bridge-local-knowledge.service --no-pager` ; en cas d'erreur : `journalctl -u opensim-ai-bridge-local-knowledge.service -n 50 --no-pager`.
+
+Une modification de TXT entraîne une réindexation lorsque son contenu change. Supprimer un TXT efface **son entrée indexée** lors du prochain passage sans toucher aux contenus HTML/PDF. La recherche IM relit l'index commun ; aucun redémarrage ni déploiement DLL n'est nécessaire pour une simple mise à jour documentaire.
+
+### Installation initiale (uniquement si non encore installée)
+
+L'artefact GitHub Actions contient `knowledge/knowledge_cli.py`, les unités systemd et le script `scripts/install-local-knowledge.sh`. L'installateur crée les quatre dossiers privés et le timer, puis lance un premier passage. **Ne pas relancer cette installation sur une instance fonctionnelle sans vérifier les fichiers existants et les droits.** Pour une fiche seule, il suffit de déposer le TXT et de réindexer.
+
+### Différence importante
+
+Le bouton **Actualiser l'indexation des quatre sites** reconstruit les sources Web/PDF ; il **n'indexe pas les TXT locaux**. L'indexation des TXT a son propre bouton et son propre timer. Le statut `success` du service atteste la réussite de la tâche, pas l'exactitude de chaque réponse IA : tester une question réelle en IM pour valider la recherche et le contexte.
