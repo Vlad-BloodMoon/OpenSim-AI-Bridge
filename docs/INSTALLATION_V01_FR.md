@@ -1,5 +1,7 @@
 # Installation / premier test V0.1 (expérimental)
 
+> **Guide historique V0.1 — premier essai sans IA.** Pour les fonctionnalités actuelles (administration Web, multi-IA, Azure et base de connaissances), commencer par le [README](../README.md), l'[architecture](ARCHITECTURE.md) et les guides dédiés. Ne pas recopier ce guide ancien sur une installation BloodMoon déjà opérationnelle.
+
 La V0.1 est un premier client **sans IA**. Elle utilise le paquet LibreMetaverse **3.3.1** depuis NuGet ; son fonctionnement doit être vérifié sur OpenSimulator 0.9.3.1.
 
 ## Prérequis
