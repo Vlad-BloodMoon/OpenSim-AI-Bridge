@@ -186,3 +186,13 @@ La détection du domaine documentaire fonctionne également avec ces termes mult
 Le test hors ligne `--verify-knowledge` contient des questions sur les Freelands et la malédiction dans les six langues, avec contrôle du routage et de la présence des mots français canoniques dans l'expression FTS.
 
 **Limite à connaître :** c'est un dictionnaire de notions, pas un traducteur universel. Les nouveaux sujets ou formulations inconnues nécessiteront un enrichissement lexical ou une autre stratégie de recherche. Le respect de la langue de réponse par l'IA reste à valider en IM réel. Cette évolution nécessite le déploiement d'une nouvelle DLL après succès CI ; les TXT, le timer et la base ne changent pas.
+
+## Vocabulaire protégé administrable — 24 novembre 2026
+
+L'administration HTTPS **Base de connaissances → Vocabulaire protégé et termes BloodMoon** permet aux administrateurs authentifiés d'ajouter, modifier et supprimer des termes propres à la grille (ex. Grid, Freeland, HUD, Hypergrid, Marketplace, Magic Box, Vital Liquid). Pour chaque terme, définir les **variantes / synonymes**, les **mots-clés canoniques** à rechercher, et éventuellement une **catégorie documentaire** : Grid, Roleplay, Marketplace ou OpenSim Handbook.
+
+La sauvegarde passe exclusivement par le contrôleur local déjà authentifié par socket Unix, avec la protection CSRF du site. Le contrôleur vérifie les entrées, limite à 100 termes et enregistre atomiquement dans `config/knowledge-terms.json` (hors racine publique du site, permissions `0600`). Les avatars chargent ce fichier à chaque recherche, donc aucune compilation, réindexation ni relance n'est nécessaire **après la première installation de cette fonctionnalité**. Si le fichier n'existe pas, les termes intégrés servent de valeurs initiales ; dès qu'un premier terme est enregistré, la liste entière devient modifiable, y compris pour supprimer un terme par défaut.
+
+La traduction de la question par l'API Azure BloodMoon n'est pas modifiée : le bot garde le texte original et ajoute les mots-clés protégés pour rechercher dans le corpus. La réponse générée par l'IA vise toujours la langue du résident. Cette protection améliore la sélection documentaire ; elle ne garantit pas l'absence de toutes les ambiguïtés de traduction.
+
+**Déploiement initial nécessaire** : mettre à jour le binaire bot, `controller/control.py`, `controller/protected_terms.py` et `web/OpenSim_AI/index.php`. Le module `protected_terms.py` est désormais inclus dans l'artefact GitHub et l'installateur `install-multibot.sh`. Aucun changement à `/etc/bloodmoon-translator/config.php`, `translate.php` ou `web-translate.php`.
