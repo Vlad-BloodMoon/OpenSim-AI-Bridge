@@ -84,6 +84,44 @@ if (args.Length == 1 && args[0] == "--verify-knowledge")
         Console.Error.WriteLine("Multilingual search expansion for French editorial notes failed.");
         return 1;
     }
+    // One editorial TXT per topic: questions in all six supported languages
+    // must retrieve its canonical terms without any translation API call.
+    var freelandQueries = new[] {
+        "Comment obtenir un terrain gratuit sur BloodMoon ?",
+        "How can I get free land on BloodMoon?",
+        "¿Cómo conseguir un terreno gratis en BloodMoon?",
+        "Wie bekomme ich ein kostenloses Grundstück auf BloodMoon?",
+        "Come ottenere un terreno gratuito su BloodMoon?",
+        "Como conseguir um terreno grátis no BloodMoon?"
+    };
+    foreach (var question in freelandQueries)
+    {
+        var q = KnowledgeSearch.MakeFtsExpression(question);
+        if (q is null || !q.Contains("\"freeland\"", StringComparison.Ordinal) ||
+            !KnowledgeSearch.DetectDomains(question).Contains("grid"))
+        {
+            Console.Error.WriteLine("Multilingual Freeland retrieval failed: " + question);
+            return 1;
+        }
+    }
+    var curseQueries = new[] {
+        "Comment fonctionne la malédiction des vampires ?",
+        "How does the vampire curse work?",
+        "¿Cómo funciona la maldición de los vampiros?",
+        "Wie funktioniert der Fluch der Vampire?",
+        "Come funziona la maledizione dei vampiri?",
+        "Como funciona a maldição dos vampiros?"
+    };
+    foreach (var question in curseQueries)
+    {
+        var q = KnowledgeSearch.MakeFtsExpression(question);
+        if (q is null || !q.Contains("\"malédiction\"", StringComparison.Ordinal) ||
+            !KnowledgeSearch.DetectDomains(question).Contains("roleplay"))
+        {
+            Console.Error.WriteLine("Multilingual Roleplay retrieval failed: " + question);
+            return 1;
+        }
+    }
     var routingHits = new[] {
         new KnowledgeHit("https://bloodmoonpack.com/OpenSim_Handbook/commands-terrain-objects.php?lang=fr",
                          "OpenSimulator terrain console commands", "Technical server administration", "handbook"),
