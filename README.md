@@ -63,7 +63,7 @@ Question -> dedicated PHP translation gateway -> existing Azure Translator
 
 **[GitHub Releases — v1.0.0](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/releases/tag/v1.0.0)** · [New-install smoke-test guide (FR/EN)](docs/RELEASE_INSTALL_FR_EN.md) · [Release notes (FR/EN)](docs/RELEASE_NOTES_V1.0.0.md).
 
-The public archive is a framework-dependent Linux x64 ZIP with an SHA-256 checksum, **not** an unattended universal Web installer. The operator must supply their own grid credentials, protect configuration and obtain access to any remote AI service they enable. No real passwords, private indexes or paid-provider keys are shipped.
+The public archive is a framework-dependent Linux x64 ZIP with a separate `SHA256SUMS.txt` checksum file, **not** an unattended universal Web installer. The operator must supply their own grid credentials, protect configuration and obtain access to any remote AI service they enable. No real passwords, private indexes or paid-provider keys are shipped.
 
 ## Getting started / Démarrage
 
