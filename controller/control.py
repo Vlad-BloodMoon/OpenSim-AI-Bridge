@@ -27,7 +27,7 @@ import protected_terms
 import catalog_cache
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list", "catalog_lookup"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -850,12 +850,43 @@ def catalog_list(filters=None):
 
 
 
+
+def catalog_lookup(values):
+    """Resolve a catalog selection on the server, without creating a profile."""
+    if (not isinstance(values, dict) or set(values) != {"provider", "model"}
+        or not isinstance(values["provider"], str)
+        or not isinstance(values["model"], str)):
+        raise ControlError("Invalid catalog selection")
+    provider, model = values["provider"], values["model"]
+    mapping = {"groq": "Groq", "openrouter": "OpenRouter", "gemini": "Gemini"}
+    if provider not in mapping or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,100}", model):
+        raise ControlError("No supported route for selected model")
+    try:
+        snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+    except (catalog_cache.CatalogError, OSError):
+        snapshot = None
+    if not isinstance(snapshot, dict):
+        raise ControlError("Catalog unavailable")
+    for record in snapshot.get("models", [])[:3000]:
+        if not isinstance(record, dict):
+            continue
+        if record.get("provider") == provider and record.get("model") == model:
+            return {"provider": mapping[provider], "model": model,
+                    "modelName": str(record.get("modelName", ""))[:150],
+                    "publicEligible": provider_profiles.public_eligible(mapping[provider], model),
+                    "configured": False, "enabled": False}
+    raise ControlError("Model no longer in the imported catalog")
+
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
 
     if command == "catalog_list":
         return catalog_list(settings)
+    if command == "catalog_lookup":
+        return catalog_lookup(settings)
 
     if command == "test_multi_ai_profile":
         return test_multi_ai_profile(install, settings)
