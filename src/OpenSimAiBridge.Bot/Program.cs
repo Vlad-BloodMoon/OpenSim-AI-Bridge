@@ -336,7 +336,7 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
         rateLimit.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
             modelTime.AddHours(12));
         var daily = ProviderFailurePolicy.Classify(
-            rateLimit, modelTime, "{\\"error\\":\\"daily quota reached\\"}");
+            rateLimit, modelTime, "daily quota reached");
         if (daily.Category != "daily_quota" || !daily.ShareWithOtherAvatars ||
             daily.Cooldown != TimeSpan.FromHours(12))
             throw new InvalidOperationException("Daily quota HTTP-date Retry-After not classified.");
