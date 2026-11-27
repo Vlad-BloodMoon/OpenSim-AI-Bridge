@@ -153,7 +153,7 @@ def approved(source, url):
                 and not parsed.query and not parsed.fragment
                 and len(parsed.path) <= 1024 and raw.startswith("/files/")
                 and segments[0:2] == ["", "files"]
-                and all(p and p not in (".", "..") and "\\\\" not in p for p in segments[2:])
+                and all(p and p not in (".", "..") and "\\" not in p for p in segments[2:])
                 and raw.lower().endswith(".pdf")
                 and quote(raw, safe="/") == parsed.path):
             return url
@@ -400,7 +400,7 @@ def import_files_pdfs(conn, root=FILES_PDF_ROOT):
                 continue
             relative = file.relative_to(root)
             # Reject paths that could be ambiguous if published as HTTPS URLs.
-            if any(not p or p in (".", "..") or "\\\\" in p or "\\x00" in p
+            if any(not p or p in (".", "..") or "\\\\" in p or "\x00" in p
                    for p in relative.parts):
                 continue
             url = FILES_PDF_PREFIX + quote(relative.as_posix(), safe="/")
@@ -439,11 +439,11 @@ def import_files_pdfs(conn, root=FILES_PDF_ROOT):
                 if proc.returncode:
                     raise ValueError("pdftotext failed (possibly encrypted or malformed)")
                 # Page separators are kept as explicit headings; no page is skipped.
-                pages = proc.stdout.decode("utf-8", errors="replace").split("\\f")
+                pages = proc.stdout.decode("utf-8", errors="replace").split("\f")
                 if pages and not pages[-1].strip():
                     pages.pop()
-                text = "\\n".join(
-                    "Page " + str(i) + "\\n" + page.strip()
+                text = "\n".join(
+                    "Page " + str(i) + "\n" + page.strip()
                     for i, page in enumerate(pages, 1) if page.strip()
                 )
                 if not text.strip():
