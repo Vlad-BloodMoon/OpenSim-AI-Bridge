@@ -10,12 +10,15 @@ import json
 import os
 import stat
 import tempfile
+import urllib.error
 import urllib.request
 from pathlib import Path
 
 from catalog_models import CatalogError, normalize_catalog
 
 SOURCE_URL = "https://free-llm.com/catalog.json"
+# Upstream publishes the same v2 schema as a daily snapshot in its own repository.
+MIRROR_URL = "https://raw.githubusercontent.com/nejib1/Free-LLM/main/router/catalog.snapshot.json"
 MAX_DOWNLOAD_BYTES = 2_000_000
 MAX_CACHE_BYTES = 2_000_000
 
@@ -25,9 +28,11 @@ class _NoRedirect(urllib.request.HTTPRedirectHandler):
         raise CatalogError("Catalog redirects are not permitted")
 
 
-def download_catalog():
+def _download_pinned(url):
+    if url not in (SOURCE_URL, MIRROR_URL):
+        raise CatalogError("Unapproved catalog URL")
     request = urllib.request.Request(
-        SOURCE_URL,
+        url,
         headers={"Accept": "application/json", "User-Agent": "BloodMoonAI-Catalog/1.0"},
         method="GET",
     )
@@ -41,6 +46,22 @@ def download_catalog():
         if len(raw) > MAX_DOWNLOAD_BYTES:
             raise CatalogError("Catalog response exceeds download limit")
         return raw
+
+
+def download_catalog():
+    """Use the upstream HTTPS endpoint, then its official GitHub snapshot.
+
+    Some cloud/datacenter IPs receive HTTP 403 from the website; the mirror is
+    published in the SAME upstream GitHub repository, not a third-party proxy.
+    Both payloads are validated identically before cache replacement.
+    """
+    errors = []
+    for url in (SOURCE_URL, MIRROR_URL):
+        try:
+            return _download_pinned(url)
+        except (CatalogError, urllib.error.URLError, OSError) as exc:
+            errors.append(type(exc).__name__)
+    raise CatalogError("All approved catalog sources failed: " + ", ".join(errors))
 
 
 def _validate_path(path):
