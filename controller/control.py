@@ -784,7 +784,7 @@ def catalog_list(filters=None):
     matched = []
     query = query.casefold().strip()
     provider = provider.casefold().strip()
-    for record in snapshot["models"][:catalog_cache.MAX_DOWNLOAD_BYTES]:
+    for record in snapshot["models"][:3000]:
         if not isinstance(record, dict):
             continue
         if provider and str(record.get("provider", "")).casefold() != provider:
