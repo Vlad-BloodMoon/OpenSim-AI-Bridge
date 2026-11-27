@@ -103,7 +103,7 @@ function request_control(string $action, bool $confirm = false, ?array $settings
 $requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
 $selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
 $pageRaw = $_POST['page'] ?? $_GET['page'] ?? 'dashboard';
-$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules', 'knowledge'], true) ? $pageRaw : 'dashboard';
+$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules', 'knowledge', 'catalog'], true) ? $pageRaw : 'dashboard';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -442,6 +442,16 @@ foreach ($activityEvents as $activityEvent) {
         break;
     }
 }
+$catalogQuery = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 100) : '';
+$catalogProvider = is_string($_GET['provider'] ?? null) ? mb_substr(trim($_GET['provider']), 0, 80) : '';
+$catalogCompatibility = in_array($_GET['compatibility'] ?? 'all', ['all', 'supported', 'other'], true)
+    ? (string)($_GET['compatibility'] ?? 'all') : 'all';
+$catalogResponse = $authenticated && $page === 'catalog'
+    ? request_control('catalog_list', false, [
+        'query' => $catalogQuery, 'provider' => $catalogProvider,
+        'compatibility' => $catalogCompatibility
+    ]) : null;
+$catalog = is_array($catalogResponse['result'] ?? null) ? $catalogResponse['result'] : null;
 $vocabularyResponse = $authenticated && $page === 'knowledge' ? request_control('vocabulary_list') : null;
 $vocabulary = is_array($vocabularyResponse['result']['entries'] ?? null)
     ? $vocabularyResponse['result']['entries'] : null;
@@ -579,7 +589,7 @@ textarea{resize:vertical}
 </section>
 <?php else: ?>
 <nav class="admin-menu" aria-label="Menu principal">
-<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA','knowledge'=>'Base de connaissances'] as $p => $label): ?>
+<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA','knowledge'=>'Base de connaissances','catalog'=>'Catalogue IA'] as $p => $label): ?>
 <a href="?page=<?= esc($p) ?>&amp;bot=<?= esc($selectedBot) ?>" <?= $page === $p ? 'aria-current="page"' : '' ?>><?= esc($label) ?></a>
 <?php endforeach ?>
 </nav>
@@ -928,6 +938,53 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <button name="action" value="vocabulary_upsert">Ajouter ce terme</button>
 </form>
 <p class="muted">Maximum 100 termes, 12 variantes et 16 mots-clés par entrée. Les données restent dans la configuration privée du serveur, jamais dans le dossier Web.</p>
+<?php endif ?>
+</section>
+<?php endif ?>
+<?php if ($page === 'catalog'): ?>
+<section class="panel">
+<h2>Catalogue des modèles IA distants</h2>
+<p class="muted">Catalogue consultatif de Free-LLM : les informations de gratuité, quotas et compatibilité peuvent changer. Aucun modèle n'est ajouté ou activé automatiquement, aucune clé API n'est transmise au catalogue et aucune donnée de résidents n'est utilisée.</p>
+<?php if ($catalog === null): ?>
+<div class="notice error">Catalogue indisponible : contrôleur V2 non installé ou erreur de lecture.</div>
+<?php elseif (empty($catalog['available'])): ?>
+<p>Le catalogue n'a pas encore été synchronisé. Ton bot continue d'utiliser normalement ses modèles configurés dans Modules IA.</p>
+<?php else: ?>
+<p class="muted">Source : <a href="https://free-llm.com/" rel="noopener noreferrer">Free-LLM</a> — génération UTC <?= esc((string)($catalog['generatedAtUtc'] ?? '—')) ?>. Résultats : <?= (int)($catalog['total'] ?? 0) ?>, maximum 30 affichés.</p>
+<?php endif ?>
+<form method="get">
+<input type="hidden" name="page" value="catalog">
+<input type="hidden" name="bot" value="<?= esc($selectedBot) ?>">
+<div class="grid">
+<div><label for="catalog-q">Rechercher un modèle ou fournisseur</label><input id="catalog-q" name="q" maxlength="100" value="<?= esc($catalogQuery) ?>" placeholder="Ex. Groq, Gemini, Qwen"></div>
+<div><label for="catalog-provider">Fournisseur (identifiant exact)</label><input id="catalog-provider" name="provider" maxlength="80" value="<?= esc($catalogProvider) ?>" placeholder="Ex. groq"></div>
+<div><label for="catalog-compatibility">Compatibilité du routeur</label>
+<select id="catalog-compatibility" name="compatibility">
+<option value="all" <?= $catalogCompatibility === 'all' ? 'selected' : '' ?>>Tous</option>
+<option value="supported" <?= $catalogCompatibility === 'supported' ? 'selected' : '' ?>>Fournisseurs connus</option>
+<option value="other" <?= $catalogCompatibility === 'other' ? 'selected' : '' ?>>Adaptateur non disponible</option>
+</select></div>
+</div>
+<button type="submit">Rechercher dans le catalogue</button>
+</form>
+<?php if (!empty($catalog['available']) && !empty($catalog['models'])): ?>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;text-align:left">
+<thead><tr><th>Fournisseur</th><th>Modèle</th><th>Contexte</th><th>Gratuité annoncée</th><th>Routeur V1</th><th>Source</th></tr></thead>
+<tbody>
+<?php foreach ($catalog['models'] as $model): ?>
+<tr style="border-top:1px solid #36415e">
+<td style="padding:.4rem"><?= esc((string)($model['providerName'] ?? '')) ?></td>
+<td style="padding:.4rem"><?= esc((string)($model['modelName'] ?? '')) ?><small style="display:block"><?= esc((string)($model['model'] ?? '')) ?></small></td>
+<td style="padding:.4rem"><?= isset($model['contextTokens']) ? (int)$model['contextTokens'] : '—' ?></td>
+<td style="padding:.4rem"><?= esc((string)($model['freeTierClaim'] ?? 'inconnu')) ?> <small>(non vérifiée)</small></td>
+<td style="padding:.4rem"><?= !empty($model['routerCompatible']) ? 'Fournisseur connu — modèle à vérifier' : 'Non disponible' ?></td>
+<td style="padding:.4rem"><?php $modelUrl = (string)($model['sourceUrl'] ?? ''); ?><?php if (str_starts_with($modelUrl, 'https://free-llm.com/')): ?><a href="<?= esc($modelUrl) ?>" rel="noopener noreferrer">Fiche</a><?php else: ?>—<?php endif ?></td>
+</tr>
+<?php endforeach ?>
+</tbody></table></div>
+<?php elseif (!empty($catalog['available'])): ?>
+<p class="muted">Aucun modèle correspondant à la recherche.</p>
 <?php endif ?>
 </section>
 <?php endif ?>
