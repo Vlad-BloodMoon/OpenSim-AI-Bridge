@@ -1,0 +1,28 @@
+[Unit]
+Description=BloodMoon AI - index public files PDF library recursively
+After=local-fs.target
+
+[Service]
+Type=oneshot
+User=@BOT_USER@
+Group=@BOT_USER@
+WorkingDirectory=@INSTALL_DIR@
+ExecStart=/usr/bin/python3 @INSTALL_DIR@/knowledge/knowledge_cli.py import-files-pdfs --root /var/www/BloodMoon/files
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadOnlyPaths=/var/www/BloodMoon/files
+ReadWritePaths=@INSTALL_DIR@/data
+ProtectHome=false
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=true
+StandardOutput=journal
+StandardError=journal
