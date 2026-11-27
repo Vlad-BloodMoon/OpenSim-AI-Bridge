@@ -331,6 +331,39 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
             throw new InvalidOperationException("The expired model cooldown must allow new attempts.");
         if (!botA.TryReserve("OpenRouter", t.AddHours(1), 2, out _))
             throw new InvalidOperationException("A new hourly bucket must allow fresh requests.");
+        // Deterministic HTTP error policy regressions: no real API requests.
+        using var rateLimit = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        rateLimit.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            modelTime.AddHours(12));
+        var daily = ProviderFailurePolicy.Classify(
+            rateLimit, modelTime, "{\\"error\\":\\"daily quota reached\\"}");
+        if (daily.Category != "daily_quota" || !daily.ShareWithOtherAvatars ||
+            daily.Cooldown != TimeSpan.FromHours(12))
+            throw new InvalidOperationException("Daily quota HTTP-date Retry-After not classified.");
+        using var shortLimit = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        shortLimit.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            TimeSpan.FromSeconds(90));
+        if (ProviderFailurePolicy.Classify(shortLimit, modelTime).Cooldown !=
+            TimeSpan.FromSeconds(90))
+            throw new InvalidOperationException("Retry-After delay-seconds ignored.");
+        using var invalidDate = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        invalidDate.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            modelTime.AddMinutes(-5));
+        if (ProviderFailurePolicy.Classify(invalidDate, modelTime).Cooldown !=
+            TimeSpan.FromMinutes(3))
+            throw new InvalidOperationException("Past Retry-After must use a safe fallback.");
+        using var unauthorized = new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        var denied = ProviderFailurePolicy.Classify(unauthorized, modelTime);
+        if (denied.Category != "auth_failed" || denied.ShareWithOtherAvatars)
+            throw new InvalidOperationException("Bad key cannot block other profiles.");
+        using var unavailable = new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+        if (ProviderFailurePolicy.Classify(unavailable, modelTime).Category != "provider_unavailable")
+            throw new InvalidOperationException("HTTP 503 must be classified as provider unavailable.");
+        botA.RecordModelCooldown("Gemini", "gemini-model-a", modelTime, TimeSpan.FromHours(12));
+        if (botB.TryReserve("Gemini", modelTime.AddHours(2), 2, out _, "gemini-model-a"))
+            throw new InvalidOperationException("Long HTTP-date cooldown must persist between avatars.");
+        if (!botB.TryReserve("Gemini", modelTime.AddHours(13), 2, out _, "gemini-model-a"))
+            throw new InvalidOperationException("Long cooldown must expire without manual reset.");
         Console.WriteLine("Shared provider quota and automatic fallback preconditions passed.");
         return 0;
     }
