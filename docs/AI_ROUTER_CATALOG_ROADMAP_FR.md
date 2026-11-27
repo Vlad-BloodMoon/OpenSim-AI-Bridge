@@ -170,6 +170,14 @@
 
 ## 7. Suivi
 
+### Issues GitHub dédiées
+
+- **V1 / P0 — Fiabilité de la bascule :** https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/2
+- **V2 / P1 — Catalogue API distantes :** https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/3
+- **V3 / P2 — Sélection intelligente et métriques :** https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/4
+
+Ordre de réalisation : **V1 → V2 → V3**, avec CI et validation sur bot de test entre chaque étape.
+
 Ce document est la **source de vérité du TODO**. À l'ouverture de chaque chantier, relier l'issue/PR et cocher les cases seulement après tests réels. Les liens tiers donnent des **pistes techniques**, non des dépendances déjà installées.
 
 **Hors périmètre :** héberger un LLM sur `robust-vm`, déployer FreeLLMAPI ou Free-LLM Router comme service intermédiaire, agrégation de comptes visant à contourner les quotas, découverte automatique suivie d'activation publique sans validation.
