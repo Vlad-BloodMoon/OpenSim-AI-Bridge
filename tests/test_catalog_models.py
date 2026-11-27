@@ -46,6 +46,22 @@ class CatalogTests(unittest.TestCase):
             self.assertIs(entry["enabled"], False)
             self.assertIs(entry["costVerified"], False)
 
+    def test_explicit_remote_provider_aliases_only(self):
+        from catalog_models import adapter_for_slug, catalog_provider_search_text
+        self.assertEqual(adapter_for_slug("groq-cloud"), "Groq")
+        self.assertEqual(adapter_for_slug("google-ai-studio"), "Gemini")
+        self.assertEqual(adapter_for_slug("openrouter"), "OpenRouter")
+        self.assertIsNone(adapter_for_slug("vertex-ai-express"))
+        self.assertIsNone(adapter_for_slug("random-google-proxy"))
+        self.assertIn("Gemini", catalog_provider_search_text("google-ai-studio", "Google AI Studio"))
+        payload = sample()
+        payload["providers"][0]["slug"] = "google-ai-studio"
+        payload["providers"][0]["name"] = "Google AI Studio"
+        payload["providers"][0]["url"] = "https://free-llm.com/provider/google-ai-studio"
+        normalized = normalize_catalog(payload)
+        self.assertTrue(normalized["models"][0]["routerCompatible"])
+        self.assertFalse(normalized["models"][0]["enabled"])
+
     def test_malicious_and_invalid_metadata(self):
         payload = sample()
         payload["providers"][0]["url"] = "https://attacker@free-llm.com/provider/groq"
