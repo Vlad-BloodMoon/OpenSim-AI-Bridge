@@ -390,7 +390,14 @@ def import_files_pdfs(conn, root=FILES_PDF_ROOT):
                 "errors": 0, "pages": 0}
     found = set()
     # Walk only real subdirectories. Ignore symlinked files and subdirectories.
-    for base, dirs, names in os.walk(root, topdown=True, followlinks=False):
+    # An unreadable subdirectory must never be mistaken for deleted documents.
+    scan_errors = []
+    def on_walk_error(error):
+        scan_errors.append(error)
+        print("  PDF SCAN ERROR: " + str(error), file=sys.stderr, flush=True)
+
+    for base, dirs, names in os.walk(
+            root, topdown=True, followlinks=False, onerror=on_walk_error):
         dirs[:] = sorted(d for d in dirs if not (Path(base) / d).is_symlink())
         for filename in sorted(names):
             if not filename.lower().endswith(".pdf"):
@@ -469,6 +476,11 @@ def import_files_pdfs(conn, root=FILES_PDF_ROOT):
                       file=sys.stderr, flush=True)
     # Prune only documents previously indexed by this importer, after a fully
     # successful walk. A transient extraction error retains the previous entry.
+    if scan_errors:
+        counters["errors"] += len(scan_errors)
+        print("  PDF scan incomplete: preserving old indexed PDFs",
+              file=sys.stderr, flush=True)
+        return counters
     old = [u for (u,) in conn.execute("SELECT url FROM knowledge_files_pdf")]
     with conn:
         for url in old:
