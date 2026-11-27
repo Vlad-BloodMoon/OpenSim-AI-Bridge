@@ -176,7 +176,7 @@ public sealed class SharedProviderQuota
         if (provider is not ("Groq" or "OpenRouter" or "Gemini" or "OpenAI") ||
             string.IsNullOrWhiteSpace(model) || model.Length > 100 ||
             !Directory.Exists(Path.GetDirectoryName(databasePath))) return;
-        var seconds = Math.Clamp((long)Math.Ceiling(duration.TotalSeconds), 1, 3600);
+        var seconds = Math.Clamp((long)Math.Ceiling(duration.TotalSeconds), 1, 86400);
         try
         {
             lock (localLock)
