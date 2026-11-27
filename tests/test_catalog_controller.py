@@ -86,6 +86,28 @@ class CatalogControllerTests(unittest.TestCase):
                         control.catalog_lookup(bad)
             self.assertEqual(path.read_bytes(), unchanged)
 
+    def test_groq_cloud_is_found_as_groq_and_can_be_prepared(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "catalog" / "catalog.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps({
+                "schemaVersion": 2, "generatedAtUtc": "2026-11-27T12:00:00Z",
+                "models": [{
+                    "provider": "groq-cloud", "providerName": "Groq",
+                    "model": "openai/gpt-oss-120b", "modelName": "GPT OSS 120B",
+                    "routerCompatible": False, "sourceUrl": "https://free-llm.com/provider/groq-cloud"
+                }]
+            }))
+            with patch.object(control, "FLEET_ROOT", root):
+                matches = control.catalog_list({"provider": "groq", "compatibility": "supported"})
+                self.assertEqual(matches["total"], 1)
+                self.assertTrue(matches["models"][0]["routerCompatible"])
+                prepared = control.catalog_lookup({
+                    "provider": "groq-cloud", "model": "openai/gpt-oss-120b"})
+                self.assertEqual(prepared["provider"], "Groq")
+                self.assertFalse(prepared["enabled"])
+
     def test_read_only_filtered_catalog_and_missing_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
