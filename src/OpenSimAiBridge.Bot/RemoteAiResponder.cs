@@ -290,29 +290,26 @@ public sealed class RemoteAiResponder : IDisposable
                                                        max_tokens = 900, temperature = 0.4 });
                     request.Content = new StringContent(json, Encoding.UTF8, "application/json");
                     using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                    if (response.StatusCode == HttpStatusCode.TooManyRequests ||
-                        response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout ||
-                        (int)response.StatusCode >= 500)
-                    {
-                        var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
-                        var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
-                        unavailableUntil[profile.Id] = now + boundedRetry;
-                        if (Multi)
-                            sharedQuota.RecordModelCooldown(profile.Provider, profile.Model,
-                                DateTimeOffset.UtcNow, boundedRetry);
-                        RecordActivity(profile, "http_error", (int)response.StatusCode);
-                        // A 503/429 can be specific to one model. Keep other models eligible.
-                        switched = true;
-                        continue;
-                    }
                     if (!response.IsSuccessStatusCode)
                     {
-                        // 4xx is often an invalid key or model; do not retry automatically.
-                        unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
-                        // Key/model errors are not proven provider-wide: only
-                        // pause the local profile until the admin can review it.
+                        // Read at most 4 KiB of error body for *classification
+                        // only*. Never write raw errors, prompts or keys to logs.
+                        string? hint = null;
+                        if (response.StatusCode == HttpStatusCode.TooManyRequests &&
+                            response.Content.Headers.ContentLength is > 0 and <= 4096)
+                        {
+                            hint = await response.Content.ReadAsStringAsync(cancellationToken)
+                                .ConfigureAwait(false);
+                        }
+                        var failure = ProviderFailurePolicy.Classify(
+                            response, DateTimeOffset.UtcNow, hint);
+                        unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + failure.Cooldown;
+                        if (Multi && failure.ShareWithOtherAvatars)
+                            sharedQuota.RecordModelCooldown(profile.Provider, profile.Model,
+                                DateTimeOffset.UtcNow, failure.Cooldown);
+                        // Preserve established Web audit vocabulary. The new
+                        // category is a safe, bounded classification label.
                         RecordActivity(profile, "http_error", (int)response.StatusCode);
-                        // Invalid model/key may be profile-specific: do not block other models.
                         switched = true;
                         continue;
                     }
