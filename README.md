@@ -120,6 +120,7 @@ The tests do not require Firestorm or a live grid. A successful run does **not**
 - [Remote AI and provider routing (FR)](docs/MULTI_PROVIDER_ROUTING_FR.md)
 - [Knowledge, Azure and editable vocabulary (FR)](docs/BLOODMOON_KNOWLEDGE_RAG_FR.md)
 - [Proximity welcome in local chat / Accueil des visiteurs (FR)](docs/PROXIMITY_WELCOME_FR.md)
+- [Recursive PDF knowledge from /files (FR)](docs/FILES_PDFS_KNOWLEDGE_FR.md)
 - [Initial requirements (FR)](docs/CAHIER_DES_CHARGES_FR.md) and [initial requirements (EN)](docs/REQUIREMENTS_EN.md) — **historical specifications**, not current feature checklists
 - [Security](SECURITY.md)
 - [Repository audit and cleanup record (FR)](docs/AUDIT_2026-11-24_FR.md)
