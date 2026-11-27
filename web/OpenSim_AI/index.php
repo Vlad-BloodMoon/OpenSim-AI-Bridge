@@ -932,6 +932,13 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 </section>
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
+<style>
+.ai-fold { margin-top: .7rem; }
+.ai-fold > summary { cursor: pointer; padding: .75rem .85rem; border: 1px solid #36415e; border-radius: .65rem; font-weight: 600; }
+.ai-fold > summary:hover, .ai-fold[open] > summary { background: rgba(110,145,255,.12); }
+.ai-fold[open] > summary { margin-bottom: 1rem; }
+.ai-global-fold > summary { font-size: 1.05rem; }
+</style>
 <section class="panel">
 <h2>Activité des modèles IA — <?= esc($selectedName) ?></h2>
 <p class="muted">Historique des 50 derniers événements connus de cet avatar, sans questions, réponses ni clés API. Recharge cette page après un IM pour voir le fournisseur réellement utilisé. Les horaires sont affichés en heure de Paris (été/hiver automatique). Les pauses indiquées correspondent aux décisions enregistrées, pas à une vérification en direct de la disponibilité du fournisseur.</p>
@@ -944,6 +951,8 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <p class="muted">Aucune réponse enregistrée pour cet avatar. Les événements apparaîtront après le déploiement du nouveau bot et de sa première réponse IA.</p>
 <?php endif ?>
 <?php if ($activityEvents): ?>
+<details class="ai-fold">
+<summary>Consulter l’historique détaillé (<?= count($activityEvents) ?> événements)</summary>
 <div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;text-align:left">
 <thead><tr><th>Date (Paris)</th><th>Fournisseur</th><th>Modèle</th><th>Résultat</th><th>Durée API</th><th>Motif</th><th>Pause enregistrée jusqu’à (Paris)</th></tr></thead>
@@ -989,6 +998,7 @@ foreach ($activityEvents as $activityEvent):
 </tr>
 <?php endforeach ?>
 </tbody></table></div>
+</details>
 <?php endif ?>
 </section>
 <section class="panel">
@@ -1003,7 +1013,8 @@ foreach ($activityEvents as $activityEvent):
 </form>
 </section>
 <section class="panel">
-<h2>Configuration multi-IA globale</h2>
+<details class="ai-fold ai-global-fold">
+<summary><strong>Configuration multi-IA globale</strong> — <?= !empty($multiSettings['enabled']) ? 'Activée' : 'Désactivée' ?> · <?= esc((string)($multiSettings['mode'] ?? 'auto')) ?></summary>
 <p class="muted">Une chaîne de moteurs IA distants, ordonnée par priorité. Le premier moteur actif et testé est utilisé ; le mode multi-IA tente le suivant si le précédent est indisponible ou limité. Tous les résidents peuvent dialoguer en IM avec cet avatar lorsqu'au moins un moteur public approuvé est activé.</p>
 <?php if ($multiSettings === null): ?>
 <div class="notice error">Paramètres multi-IA indisponibles : contrôleur à mettre à jour.</div>
@@ -1079,6 +1090,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
 <button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
+</details>
 </section>
 <script nonce="<?= esc($scriptNonce) ?>">
 (function () {
