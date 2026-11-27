@@ -327,7 +327,7 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
             throw new InvalidOperationException("A blocked Groq model must not disable another Groq model.");
         if (botB.TryReserve("Groq", modelTime, 2, out _, "model-B"))
             throw new InvalidOperationException("Model cooldown skips must not consume provider budget.");
-        if (!botB.TryReserve("Groq", modelTime.AddMinutes(4), 2, out _, "model-A"))
+        if (!botB.TryReserve("Groq", modelTime.AddHours(1), 2, out _, "model-A"))
             throw new InvalidOperationException("The expired model cooldown must allow new attempts.");
         if (!botA.TryReserve("OpenRouter", t.AddHours(1), 2, out _))
             throw new InvalidOperationException("A new hourly bucket must allow fresh requests.");
