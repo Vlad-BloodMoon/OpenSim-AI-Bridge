@@ -406,6 +406,41 @@ if (args.Length == 1 && args[0] == "--verify-im-chunks")
     return 0;
 }
 
+// Offline regression for bounded fallback. No real network/API calls.
+if (args.Length == 1 && args[0] == "--verify-ai-deadline")
+{
+    if (AiFallbackDeadline.Limit(TimeSpan.FromSeconds(60)) != TimeSpan.FromSeconds(20) ||
+        AiFallbackDeadline.Limit(TimeSpan.FromSeconds(4)) != TimeSpan.FromSeconds(4) ||
+        AiFallbackDeadline.Limit(TimeSpan.Zero) != TimeSpan.Zero ||
+        AiFallbackDeadline.Limit(TimeSpan.FromSeconds(-1)) != TimeSpan.Zero)
+        throw new InvalidOperationException("The total deadline must shorten or stop later attempts.");
+    var manual = new AiFallbackDeadline(false);
+    var auto = new AiFallbackDeadline(true);
+    if (manual.NextAttemptTimeout() > TimeSpan.FromSeconds(20) ||
+        auto.NextAttemptTimeout() > TimeSpan.FromSeconds(20) ||
+        manual.NextAttemptTimeout() <= TimeSpan.Zero ||
+        auto.NextAttemptTimeout() <= TimeSpan.Zero)
+        throw new InvalidOperationException("First attempts must retain their original 20s limit.");
+
+    // A timed-out attempt must not cancel the caller's token or prevent a
+    // subsequent attempt from receiving a fresh per-attempt deadline.
+    using var caller = new CancellationTokenSource();
+    using (var attempt = CancellationTokenSource.CreateLinkedTokenSource(caller.Token))
+    {
+        attempt.CancelAfter(TimeSpan.FromMilliseconds(10));
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), attempt.Token);
+            throw new InvalidOperationException("Simulated provider should have timed out.");
+        }
+        catch (OperationCanceledException) when (!caller.IsCancellationRequested) { }
+    }
+    if (caller.IsCancellationRequested || auto.NextAttemptTimeout() <= TimeSpan.Zero)
+        throw new InvalidOperationException("An expired provider attempt must preserve fallback.");
+    Console.WriteLine("AI deadline, cancellation and fallback continuity checks passed.");
+    return 0;
+}
+
 // Offline test: multiple distinct residents can speak in parallel; one
 // resident cannot occupy two slots, and the fifth distinct resident is bounded.
 if (args.Length == 1 && args[0] == "--verify-ai-concurrency")
