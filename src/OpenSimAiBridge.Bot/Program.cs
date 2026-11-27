@@ -522,7 +522,11 @@ if (welcomeSettings.Enabled && !ProximityWelcome.Valid(welcomeSettings))
     welcomeSettings.Enabled = false;
 }
 var proximityWelcome = new ProximityWelcome(welcomeSettings);
-using var ai = new RemoteAiResponder(options.Ai);
+// The status file is per avatar, including additional fleet bots whose
+// private configuration is under /var/lib/opensim-ai-bridge/bots/<id>/.
+var aiActivityFile = Path.Combine(
+    Path.GetDirectoryName(Path.GetFullPath(configPath))!, "data", "ai-provider-activity.json");
+using var ai = new RemoteAiResponder(options.Ai, aiActivityFile);
 Console.WriteLine($"OpenSim AI Bridge — remote AI: {(ai.Ready ? "enabled for configured IM access" : "disabled")}.");
 Console.WriteLine($"Avatar: {options.Grid.AvatarFirstName} {options.Grid.AvatarLastName}");
 Console.WriteLine($"Test region: {options.Grid.StartLocation.RegionName}");
