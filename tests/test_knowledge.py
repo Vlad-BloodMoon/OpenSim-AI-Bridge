@@ -124,6 +124,72 @@ class KnowledgeTests(unittest.TestCase):
             finally:
                 db.close()
 
+    def test_recursive_files_pdfs_incremental_complete_and_pruning(self):
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "files"
+            physics = root / "Physics_Engine"
+            biography = root / "Divers" / "Bio"
+            physics.mkdir(parents=True)
+            biography.mkdir(parents=True)
+            first = physics / "uBODE test.pdf"
+            second = biography / "Vlad_FR.pdf"
+            first.write_bytes(b"%PDF-1.4 first")
+            second.write_bytes(b"%PDF-1.4 second")
+            db = kb.connect(Path(directory) / "knowledge.db")
+            def fake_pdf(argv, **kwargs):
+                self.assertEqual(argv[0], "/usr/bin/pdftotext")
+                return SimpleNamespace(
+                    returncode=0,
+                    stdout=(b"uBODE documentation for OpenSimulator " * 5
+                            + b"\x0c"
+                            + b"Second page of physics and movement explanation " * 5
+                            + b"\x0c"))
+            try:
+                with patch.object(kb.subprocess, "run", side_effect=fake_pdf) as runner:
+                    result = kb.import_files_pdfs(db, root)
+                    self.assertEqual((result["indexed"], result["errors"]), (2, 0))
+                    self.assertEqual(result["pages"], 4)
+                    self.assertEqual(runner.call_count, 2)
+                    rows = db.execute("SELECT source,url FROM knowledge_pages ORDER BY url").fetchall()
+                    self.assertEqual([s for s, _ in rows], ["grid", "handbook"])
+                    self.assertTrue(all(u.startswith(kb.FILES_PDF_PREFIX) for _, u in rows))
+                    self.assertTrue(kb.safe_search(db, "Second page of physics"))
+                    result = kb.import_files_pdfs(db, root)
+                    self.assertEqual(result["unchanged"], 2)
+                    self.assertEqual(runner.call_count, 2)
+                    first.write_bytes(b"%PDF-1.4 updated")
+                    result = kb.import_files_pdfs(db, root)
+                    self.assertEqual(result["indexed"], 1)
+                    self.assertEqual(result["unchanged"], 1)
+                    second.unlink()
+                    result = kb.import_files_pdfs(db, root)
+                    self.assertEqual(result["deleted"], 1)
+                    self.assertEqual(db.execute("SELECT count(*) FROM knowledge_pages").fetchone()[0], 1)
+            finally:
+                db.close()
+
+    def test_files_pdfs_reject_unapproved_paths_and_symlink(self):
+        from unittest.mock import patch
+        self.assertIsNone(kb.approved("handbook",
+            "https://bloodmoonpack.com/files/%2E%2E/password.pdf"))
+        self.assertIsNone(kb.approved("grid",
+            "https://bloodmoonpack.com/files/../../../admin.pdf"))
+        self.assertIsNone(kb.approved("roleplay",
+            "https://bloodmoonpack.com/files/PDF.pdf"))
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "files"
+            root.mkdir()
+            (root / "not-real.pdf").symlink_to(Path(directory) / "outside.pdf")
+            db = kb.connect(Path(directory) / "knowledge.db")
+            try:
+                with patch.object(kb.subprocess, "run") as runner:
+                    stats = kb.import_files_pdfs(db, root)
+                    self.assertEqual(stats["files"], 0)
+                    runner.assert_not_called()
+            finally:
+                db.close()
+
     def test_invalid_source_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
             db = kb.connect(Path(directory) / "knowledge.db")
