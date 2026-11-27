@@ -808,9 +808,10 @@ def catalog_list(filters=None):
             continue
         if compatibility == "other" and supported:
             continue
-        if query and query not in (" ".join(str(record.get(k, "")) for k in
-                ("providerName", "provider", "model", "modelName"))) .casefold() + " " +
-                provider_text.casefold():
+        searchable = (" ".join(str(record.get(k, "")) for k in
+                ("providerName", "provider", "model", "modelName")) + " " +
+                provider_text).casefold()
+        if query and query not in searchable:
             continue
         matched.append({
             "provider": str(record.get("provider", ""))[:80],
