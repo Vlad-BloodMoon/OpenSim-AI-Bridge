@@ -19,7 +19,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode
+from urllib.parse import urljoin, urlsplit, urlunsplit, parse_qsl, urlencode, quote, unquote
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 from urllib.error import HTTPError, URLError
 
@@ -50,6 +50,10 @@ DEFAULT_DB = Path("/home/louna49400/OpenSim-AI-Bridge/data/bloodmoon_knowledge.d
 LOCAL_ROOT = Path("/var/www/BloodMoon/AI_Knowledge")
 LOCAL_CATEGORIES = ("marketplace", "opensim", "grid_bloodmoon", "roleplay_bloodmoon")
 LOCAL_PREFIX = "local_"
+FILES_PDF_ROOT = Path("/var/www/BloodMoon/files")
+FILES_PDF_PREFIX = "https://bloodmoonpack.com/files/"
+# No file-count or page-count limit. Individual PDF resource caps are safety limits.
+MAX_FILES_PDF_BYTES = 200_000_000
 MAX_LOCAL_FILES = 500
 MAX_LOCAL_FILE_BYTES = 256_000
 
@@ -138,6 +142,22 @@ def canonical(url):
 
 
 def approved(source, url):
+    # This explicit public file subtree is read from local disk only by import-files-pdfs.
+    # Existing grid/handbook source labels ensure the deployed .NET retriever can use it
+    # without an avatar binary update. No other site directories become indexable.
+    if source in ("grid", "handbook") and url.startswith(FILES_PDF_PREFIX):
+        parsed = urlsplit(url)
+        raw = unquote(parsed.path)
+        segments = raw.split("/")
+        if (parsed.scheme == "https" and parsed.netloc == "bloodmoonpack.com"
+                and not parsed.query and not parsed.fragment
+                and len(parsed.path) <= 1024 and raw.startswith("/files/")
+                and segments[0:2] == ["", "files"]
+                and all(p and p not in (".", "..") and "\\\\" not in p for p in segments[2:])
+                and raw.lower().endswith(".pdf")
+                and quote(raw, safe="/") == parsed.path):
+            return url
+        return None
     if source.startswith(LOCAL_PREFIX):
         category = source[len(LOCAL_PREFIX):]
         parsed = urlsplit(url)
@@ -349,6 +369,118 @@ def crawl(conn, source, max_pages=600, delay=.15):
     return counts
 
 
+def import_files_pdfs(conn, root=FILES_PDF_ROOT):
+    """Incrementally index all textual PDF pages below the approved public /files directory.
+
+    Files are read from disk (never HTTP); the index uses source='handbook' for
+    Physics_Engine and source='grid' elsewhere, so the deployed bot reads them.
+    PDF count and page count are not capped. Unsafe symlinks are never followed.
+    """
+    root = Path(root)
+    if root.is_symlink() or not root.is_dir():
+        raise ValueError("PDF directory missing or symlinked: " + str(root))
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS knowledge_files_pdf (
+            url TEXT PRIMARY KEY,
+            file_sha256 TEXT NOT NULL,
+            indexed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    counters = {"files": 0, "indexed": 0, "unchanged": 0, "deleted": 0,
+                "errors": 0, "pages": 0}
+    found = set()
+    # Walk only real subdirectories. Ignore symlinked files and subdirectories.
+    for base, dirs, names in os.walk(root, topdown=True, followlinks=False):
+        dirs[:] = sorted(d for d in dirs if not (Path(base) / d).is_symlink())
+        for filename in sorted(names):
+            if not filename.lower().endswith(".pdf"):
+                continue
+            file = Path(base) / filename
+            if file.is_symlink() or not file.is_file():
+                continue
+            relative = file.relative_to(root)
+            # Reject paths that could be ambiguous if published as HTTPS URLs.
+            if any(not p or p in (".", "..") or "\\\\" in p or "\\x00" in p
+                   for p in relative.parts):
+                continue
+            url = FILES_PDF_PREFIX + quote(relative.as_posix(), safe="/")
+            source = "handbook" if relative.parts[0].lower() == "physics_engine" else "grid"
+            if approved(source, url) != url:
+                counters["errors"] += 1
+                print("  INVALID PDF PATH: " + str(relative), file=sys.stderr)
+                continue
+            found.add(url)
+            counters["files"] += 1
+            try:
+                size = file.stat().st_size
+                if not 5 <= size <= MAX_FILES_PDF_BYTES:
+                    raise ValueError("PDF size outside safety limits")
+                digest = hashlib.sha256()
+                with file.open("rb") as stream:
+                    if not stream.read(5) == b"%PDF-":
+                        raise ValueError("Not a PDF file")
+                    stream.seek(0)
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(block)
+                sha = digest.hexdigest()
+                previous = conn.execute(
+                    "SELECT file_sha256 FROM knowledge_files_pdf WHERE url=?", (url,)
+                ).fetchone()
+                indexed = conn.execute(
+                    "SELECT 1 FROM knowledge_pages WHERE url=? AND source=?", (url, source)
+                ).fetchone()
+                if previous and previous[0] == sha and indexed:
+                    counters["unchanged"] += 1
+                    continue
+                proc = subprocess.run(
+                    ["/usr/bin/pdftotext", "-layout", "-enc", "UTF-8", str(file), "-"],
+                    capture_output=True, timeout=180, check=False
+                )
+                if proc.returncode:
+                    raise ValueError("pdftotext failed (possibly encrypted or malformed)")
+                # Page separators are kept as explicit headings; no page is skipped.
+                pages = proc.stdout.decode("utf-8", errors="replace").split("\\f")
+                if pages and not pages[-1].strip():
+                    pages.pop()
+                text = "\\n".join(
+                    "Page " + str(i) + "\\n" + page.strip()
+                    for i, page in enumerate(pages, 1) if page.strip()
+                )
+                if not text.strip():
+                    raise ValueError("No extractable PDF text (scanned/image-only?)")
+                title = relative.stem.replace("_", " ").replace("-", " ")
+                # Store uses FTS5 passages; only this URL is replaced, all other
+                # website, roleplay PDFs and curated TXT entries are untouched.
+                state, _ = store(conn, source, url, title, text)
+                with conn:
+                    conn.execute("""
+                        INSERT INTO knowledge_files_pdf(url,file_sha256,indexed_at)
+                        VALUES (?,?,CURRENT_TIMESTAMP)
+                        ON CONFLICT(url) DO UPDATE SET
+                        file_sha256=excluded.file_sha256,indexed_at=CURRENT_TIMESTAMP
+                    """, (url, sha))
+                counters["indexed" if state == "indexed" else "unchanged"] += 1
+                counters["pages"] += len(pages)
+                print("  " + state + ": " + str(relative)
+                      + " [" + str(len(pages)) + " pages]", flush=True)
+            except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
+                counters["errors"] += 1
+                print("  PDF ERROR " + str(relative) + ": " + str(exc),
+                      file=sys.stderr, flush=True)
+    # Prune only documents previously indexed by this importer, after a fully
+    # successful walk. A transient extraction error retains the previous entry.
+    old = [u for (u,) in conn.execute("SELECT url FROM knowledge_files_pdf")]
+    with conn:
+        for url in old:
+            if url in found:
+                continue
+            conn.execute("DELETE FROM knowledge_passages WHERE url=?", (url,))
+            conn.execute("DELETE FROM knowledge_pages WHERE url=?", (url,))
+            conn.execute("DELETE FROM knowledge_files_pdf WHERE url=?", (url,))
+            counters["deleted"] += 1
+    return counters
+
+
 def import_local(conn, root=LOCAL_ROOT):
     """Index curated UTF-8 notes. No symlink traversal, network, or web publishing."""
     root = Path(root)
@@ -421,6 +553,8 @@ def main():
     sub.add_parser("status")
     local_cmd = sub.add_parser("import-local", help="Index curated UTF-8 TXT files without network")
     local_cmd.add_argument("--root", type=Path, default=LOCAL_ROOT)
+    files_cmd = sub.add_parser("import-files-pdfs", help="Incremental recursive index of public /files PDFs")
+    files_cmd.add_argument("--root", type=Path, default=FILES_PDF_ROOT)
     find = sub.add_parser("search")
     find.add_argument("query")
     find.add_argument("--limit", type=int, default=5)
@@ -442,6 +576,10 @@ def main():
             print(store(conn, args.source, SOURCES[args.source], title, text))
         elif args.action == "import-local":
             print(json.dumps(import_local(conn, args.root), ensure_ascii=False, indent=2))
+        elif args.action == "import-files-pdfs":
+            result = import_files_pdfs(conn, args.root)
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            return 1 if result["errors"] else 0
         elif args.action == "status":
             rows = conn.execute("""
                 SELECT source,count(*),sum((SELECT count(*) FROM knowledge_passages p WHERE p.url=d.url))
