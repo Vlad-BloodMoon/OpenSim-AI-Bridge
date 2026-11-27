@@ -265,9 +265,9 @@ public sealed class RemoteAiResponder : IDisposable
                 // in auto mode the next eligible provider is tried immediately.
                 if (Multi && !sharedQuota.TryReserve(profile.Provider, now,
                     Math.Min(settings.MaxRequestsPerHour, SharedProviderQuota.MaxAttemptsPerProviderHour),
-                    out _))
+                    out var quotaReason, profile.Model))
                 {
-                    RecordActivity(profile, "local_quota");
+                    RecordActivity(profile, quotaReason == "model-cooldown" ? "cooldown" : "local_quota");
                     switched = true;
                     continue;
                 }
@@ -297,6 +297,9 @@ public sealed class RemoteAiResponder : IDisposable
                         var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
                         var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
                         unavailableUntil[profile.Id] = now + boundedRetry;
+                        if (Multi)
+                            sharedQuota.RecordModelCooldown(profile.Provider, profile.Model,
+                                DateTimeOffset.UtcNow, boundedRetry);
                         RecordActivity(profile, "http_error", (int)response.StatusCode);
                         // A 503/429 can be specific to one model. Keep other models eligible.
                         switched = true;
@@ -306,6 +309,8 @@ public sealed class RemoteAiResponder : IDisposable
                     {
                         // 4xx is often an invalid key or model; do not retry automatically.
                         unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
+                        // Key/model errors are not proven provider-wide: only
+                        // pause the local profile until the admin can review it.
                         RecordActivity(profile, "http_error", (int)response.StatusCode);
                         // Invalid model/key may be profile-specific: do not block other models.
                         switched = true;
