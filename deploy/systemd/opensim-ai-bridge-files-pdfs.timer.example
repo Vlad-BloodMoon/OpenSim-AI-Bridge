@@ -1,0 +1,12 @@
+[Unit]
+Description=BloodMoon AI - refresh public files PDF knowledge every 5 minutes
+
+[Timer]
+OnBootSec=3min
+OnUnitInactiveSec=5min
+AccuracySec=30s
+Persistent=true
+Unit=opensim-ai-bridge-files-pdfs.service
+
+[Install]
+WantedBy=timers.target
