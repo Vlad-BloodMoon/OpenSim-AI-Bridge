@@ -69,7 +69,7 @@ class ProbeTests(unittest.TestCase):
             ("not-allowed", "evil", "key"),
             ("cerebras", "unknown", "key"),
             ("cerebras", "../../etc/passwd", "key"),
-            ("cohere", "command-a-03-2025", "bad\\nkey"),
+            ("cohere", "command-a-03-2025", "bad\nkey"),
             ("cerebras", "llama-3.3-70b", "")
         ]:
             opener = FakeOpener()
