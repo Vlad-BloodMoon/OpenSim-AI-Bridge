@@ -242,10 +242,16 @@ public sealed class RemoteAiResponder : IDisposable
             messages.Add(new { role = "user", content =
                 string.IsNullOrEmpty(context) ? prompt : $"Question du résident : {prompt}\n\n{context}" });
 
+            // Start the deadline after optional translation and local retrieval.
+            // The existing first-provider timeout remains 20 seconds; only
+            // multi-provider fallback gets a bounded total of 45 seconds.
+            var deadline = new AiFallbackDeadline(Multi && settings.Mode == "auto");
             var switched = false;
             foreach (var profile in Candidates())
             {
-                if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > now)
+                if (cancellationToken.IsCancellationRequested) return null;
+                if (deadline.Expired) break;
+                if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > DateTimeOffset.UtcNow)
                 {
                     RecordActivity(profile, "cooldown");
                     switched = true;
@@ -272,8 +278,14 @@ public sealed class RemoteAiResponder : IDisposable
                     continue;
                 }
 
+                // A skipped or rejected profile should not consume network time.
+                // Timeout covers HTTP response headers, body parsing and reading.
+                var attemptTimeout = deadline.NextAttemptTimeout();
+                if (attemptTimeout <= TimeSpan.Zero) break;
                 try
                 {
+                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    attemptCts.CancelAfter(attemptTimeout);
                     var gemini = profile.Provider == "Gemini";
                     var destination = gemini ? GeminiNative.Endpoint(profile.Model) : endpoint;
                     using var request = new HttpRequestMessage(HttpMethod.Post, destination);
@@ -289,7 +301,9 @@ public sealed class RemoteAiResponder : IDisposable
                         JsonSerializer.Serialize(new { model = profile.Model, messages,
                                                        max_tokens = 900, temperature = 0.4 });
                     request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-                    using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    using var response = await client.SendAsync(
+                        request, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token)
+                        .ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
                         // Read at most 4 KiB of error body for *classification
@@ -298,7 +312,7 @@ public sealed class RemoteAiResponder : IDisposable
                         if (response.StatusCode == HttpStatusCode.TooManyRequests &&
                             response.Content.Headers.ContentLength is > 0 and <= 4096)
                         {
-                            hint = await response.Content.ReadAsStringAsync(cancellationToken)
+                            hint = await response.Content.ReadAsStringAsync(attemptCts.Token)
                                 .ConfigureAwait(false);
                         }
                         var failure = ProviderFailurePolicy.Classify(
@@ -313,8 +327,8 @@ public sealed class RemoteAiResponder : IDisposable
                         switched = true;
                         continue;
                     }
-                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    using var stream = await response.Content.ReadAsStreamAsync(attemptCts.Token).ConfigureAwait(false);
+                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: attemptCts.Token).ConfigureAwait(false);
                     var reply = gemini ? GeminiNative.ReadText(doc.RootElement) :
                         doc.RootElement.GetProperty("choices")[0]
                             .GetProperty("message").GetProperty("content").GetString()?.Trim();
@@ -331,7 +345,15 @@ public sealed class RemoteAiResponder : IDisposable
                     return (switched && Multi ? SwitchNotice(prompt) : "") + reply;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return null; }
-                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+                catch (OperationCanceledException)
+                {
+                    // Per-attempt deadline: allow the next approved profile
+                    // until the total request deadline expires.
+                    unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
+                    RecordActivity(profile, "transport_error");
+                    switched = true;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
                 {
                     unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
                     RecordActivity(profile, "transport_error");
