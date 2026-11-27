@@ -139,11 +139,13 @@ class KnowledgeTests(unittest.TestCase):
             db = kb.connect(Path(directory) / "knowledge.db")
             def fake_pdf(argv, **kwargs):
                 self.assertEqual(argv[0], "/usr/bin/pdftotext")
+                changed = b"updated" in Path(argv[-2]).read_bytes()
                 return SimpleNamespace(
                     returncode=0,
                     stdout=(b"uBODE documentation for OpenSimulator " * 5
                             + b"\x0c"
                             + b"Second page of physics and movement explanation " * 5
+                            + (b" Updated document text." if changed else b"")
                             + b"\x0c"))
             try:
                 with patch.object(kb.subprocess, "run", side_effect=fake_pdf) as runner:
