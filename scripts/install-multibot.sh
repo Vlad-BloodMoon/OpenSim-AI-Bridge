@@ -33,7 +33,8 @@ install -o root -g root -m 0644 "$WORK/controller/multi_bot.py" /usr/local/libex
 install -o root -g root -m 0644 "$WORK/controller/provider_profiles.py" /usr/local/libexec/opensim-ai-bridge/provider_profiles.py
 install -o root -g root -m 0644 "$WORK/controller/protected_terms.py" /usr/local/libexec/opensim-ai-bridge/protected_terms.py
 install -o root -g root -m 0644 "$WORK/controller/catalog_models.py" /usr/local/libexec/opensim-ai-bridge/catalog_models.py
-install -o root -g root -m 0644 "$WORK/controller/catalog_cache.py" /usr/local/libexec/opensim-ai-bridge/catalog_cache.py
+install -o root -g root -m 0644 "$WORK/controller/catalog_cache.py" /usr/local/libexec/opensim-ai-bridge/catalog_cache.py /usr/local/libexec/opensim-ai-bridge/catalog_probe.py
+install -o root -g root -m 0644 "$WORK/controller/catalog_probe.py" /usr/local/libexec/opensim-ai-bridge/catalog_probe.py
 
 # Shared knowledge indexer: does not modify the .NET bot executable.
 # Data directory exists before systemd starts the isolated refresh job.
