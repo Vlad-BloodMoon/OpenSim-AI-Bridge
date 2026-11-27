@@ -52,6 +52,40 @@ class CatalogControllerTests(unittest.TestCase):
                     with self.assertRaises(control.ControlError):
                         control.catalog_list(invalid)
 
+    def test_catalog_lookup_is_read_only_and_rejects_unknown_models(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "catalog" / "catalog.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps({
+                "schemaVersion": 2, "generatedAtUtc": "2026-11-27T12:00:00Z",
+                "models": [
+                    {"provider": "groq", "model": "openai/gpt-oss-20b",
+                     "modelName": "GPT OSS 20B", "routerCompatible": True},
+                    {"provider": "groq", "model": "made-up-model",
+                     "modelName": "Other", "routerCompatible": True},
+                    {"provider": "unknown", "model": "other", "modelName": "Other"}
+                ]
+            }))
+            unchanged = path.read_bytes()
+            with patch.object(control, "FLEET_ROOT", root):
+                candidate = control.catalog_lookup({
+                    "provider": "groq", "model": "openai/gpt-oss-20b"})
+                self.assertEqual(candidate["provider"], "Groq")
+                self.assertEqual(candidate["enabled"], False)
+                self.assertEqual(candidate["configured"], False)
+                self.assertTrue(candidate["publicEligible"])
+                for bad in (
+                    {"provider": "evil", "model": "anything"},
+                    {"provider": "groq", "model": "not-in-catalog"},
+                    {"provider": "groq", "model": "../../etc/passwd"},
+                    {"provider": "unknown", "model": "other"},
+                    {"provider": "groq"},
+                ):
+                    with self.assertRaises(control.ControlError):
+                        control.catalog_lookup(bad)
+            self.assertEqual(path.read_bytes(), unchanged)
+
     def test_read_only_filtered_catalog_and_missing_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
