@@ -1013,7 +1013,7 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <input type="hidden" name="p" value="1">
 <div class="grid">
 <div><label for="catalog-q">Rechercher un modèle ou fournisseur</label><input id="catalog-q" name="q" maxlength="100" value="<?= esc($catalogQuery) ?>" placeholder="Ex. Groq, Gemini, Qwen"></div>
-<div><label for="catalog-provider">Fournisseur (identifiant exact)</label><input id="catalog-provider" name="provider" maxlength="80" value="<?= esc($catalogProvider) ?>" placeholder="Ex. groq"></div>
+<div><label for="catalog-provider">Fournisseur (nom ou identifiant)</label><input id="catalog-provider" name="provider" maxlength="80" value="<?= esc($catalogProvider) ?>" placeholder="Ex. groq"></div>
 <div><label for="catalog-compatibility">Compatibilité du routeur</label>
 <select id="catalog-compatibility" name="compatibility">
 <option value="all" <?= $catalogCompatibility === 'all' ? 'selected' : '' ?>>Tous</option>
