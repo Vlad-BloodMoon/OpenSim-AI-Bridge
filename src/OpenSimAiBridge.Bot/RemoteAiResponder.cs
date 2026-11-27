@@ -256,6 +256,7 @@ public sealed class RemoteAiResponder : IDisposable
                 if (string.IsNullOrWhiteSpace(key) || !Endpoints.TryGetValue(profile.Provider, out var endpoint))
                 {
                     RecordActivity(profile, "not_configured");
+                    switched = true;
                     continue;
                 }
 
