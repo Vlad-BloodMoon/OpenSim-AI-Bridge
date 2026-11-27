@@ -74,6 +74,9 @@ jobs:
       - name: Verify parallel resident AI conversations
         run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-ai-concurrency
 
+      - name: Verify bounded AI fallback deadline without upstream API calls
+        run: dotnet run --project src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj -c Release --no-build -- --verify-ai-deadline
+
       - name: Publish for Linux x64 (framework-dependent)
         run: |
           dotnet publish src/OpenSimAiBridge.Bot/OpenSimAiBridge.Bot.csproj \
