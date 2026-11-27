@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -45,7 +46,7 @@ public sealed class RemoteAiResponder : IDisposable
             ["Gemini"] = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         };
 
-    private readonly HttpClient client = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient client;
     private readonly RemoteAiSettings settings;
     private readonly string? legacyKey;
     private readonly HashSet<Guid> authorized;
@@ -63,11 +64,20 @@ public sealed class RemoteAiResponder : IDisposable
     private int usedThisHour;
 
     public RemoteAiResponder(RemoteAiSettings settings, string? activityFile = null)
+        : this(settings, activityFile, null, null) { }
+
+    // Test-only seam: the production constructor above keeps exactly the
+    // original HTTP transport and shared quota location. A fake handler lets
+    // CI exercise the *real* responder without network access or real keys.
+    internal RemoteAiResponder(RemoteAiSettings settings, string? activityFile,
+                               HttpMessageHandler? testHandler, string? testQuotaPath)
     {
         this.settings = settings;
         this.activityFile = activityFile;
+        client = testHandler is null ? new HttpClient() : new HttpClient(testHandler);
+        client.Timeout = TimeSpan.FromSeconds(20);
         knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
-        sharedQuota = new SharedProviderQuota(SharedProviderQuota.DefaultPath());
+        sharedQuota = new SharedProviderQuota(testQuotaPath ?? SharedProviderQuota.DefaultPath());
         translator = new BloodMoonTranslator(settings.UseBloodMoonTranslation,
                                               settings.BloodMoonTranslationTokenEnv);
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
@@ -76,7 +86,8 @@ public sealed class RemoteAiResponder : IDisposable
 
     // Bounded, per-avatar admin-only activity. No resident identifiers,
     // questions, responses or API credentials are recorded.
-    private void RecordActivity(RemoteAiProfile profile, string outcome, int? httpStatus = null, bool switched = false)
+    private void RecordActivity(RemoteAiProfile profile, string outcome, int? httpStatus = null, bool switched = false,
+                                long? durationMs = null, string? reason = null, DateTimeOffset? cooldownUntilUtc = null)
     {
         if (string.IsNullOrEmpty(activityFile)) return;
         lock (activitySync)
@@ -96,7 +107,10 @@ public sealed class RemoteAiResponder : IDisposable
                     model = profile.Model,
                     outcome,
                     httpStatus,
-                    switched
+                    switched,
+                    durationMs,
+                    reason,
+                    cooldownUntilUtc = cooldownUntilUtc?.ToString("O")
                 });
                 rows.Add(row);
                 Directory.CreateDirectory(Path.GetDirectoryName(activityFile)!);
@@ -242,12 +256,18 @@ public sealed class RemoteAiResponder : IDisposable
             messages.Add(new { role = "user", content =
                 string.IsNullOrEmpty(context) ? prompt : $"Question du résident : {prompt}\n\n{context}" });
 
+            // Start the deadline after optional translation and local retrieval.
+            // The existing first-provider timeout remains 20 seconds; only
+            // multi-provider fallback gets a bounded total of 45 seconds.
+            var deadline = new AiFallbackDeadline(Multi && settings.Mode == "auto");
             var switched = false;
             foreach (var profile in Candidates())
             {
-                if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > now)
+                if (cancellationToken.IsCancellationRequested) return null;
+                if (deadline.Expired) break;
+                if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > DateTimeOffset.UtcNow)
                 {
-                    RecordActivity(profile, "cooldown");
+                    RecordActivity(profile, "cooldown", reason: "profile_cooldown", cooldownUntilUtc: until);
                     switched = true;
                     continue;
                 }
@@ -255,7 +275,7 @@ public sealed class RemoteAiResponder : IDisposable
                 var key = Environment.GetEnvironmentVariable(profile.ApiKeyEnv);
                 if (string.IsNullOrWhiteSpace(key) || !Endpoints.TryGetValue(profile.Provider, out var endpoint))
                 {
-                    RecordActivity(profile, "not_configured");
+                    RecordActivity(profile, "not_configured", reason: "missing_key_or_endpoint");
                     switched = true;
                     continue;
                 }
@@ -265,15 +285,23 @@ public sealed class RemoteAiResponder : IDisposable
                 // in auto mode the next eligible provider is tried immediately.
                 if (Multi && !sharedQuota.TryReserve(profile.Provider, now,
                     Math.Min(settings.MaxRequestsPerHour, SharedProviderQuota.MaxAttemptsPerProviderHour),
-                    out _))
+                    out var quotaReason, profile.Model))
                 {
-                    RecordActivity(profile, "local_quota");
+                    RecordActivity(profile, quotaReason is "model-cooldown" or "cooldown" ? "cooldown" : "local_quota",
+                        reason: quotaReason);
                     switched = true;
                     continue;
                 }
 
+                // A skipped or rejected profile should not consume network time.
+                // Timeout covers HTTP response headers, body parsing and reading.
+                var attemptTimeout = deadline.NextAttemptTimeout();
+                if (attemptTimeout <= TimeSpan.Zero) break;
+                var attemptClock = Stopwatch.StartNew();
                 try
                 {
+                    using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    attemptCts.CancelAfter(attemptTimeout);
                     var gemini = profile.Provider == "Gemini";
                     var destination = gemini ? GeminiNative.Endpoint(profile.Model) : endpoint;
                     using var request = new HttpRequestMessage(HttpMethod.Post, destination);
@@ -289,50 +317,69 @@ public sealed class RemoteAiResponder : IDisposable
                         JsonSerializer.Serialize(new { model = profile.Model, messages,
                                                        max_tokens = 900, temperature = 0.4 });
                     request.Content = new StringContent(json, Encoding.UTF8, "application/json");
-                    using var response = await client.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                    if (response.StatusCode == HttpStatusCode.TooManyRequests ||
-                        response.StatusCode is HttpStatusCode.ServiceUnavailable or HttpStatusCode.BadGateway or HttpStatusCode.GatewayTimeout ||
-                        (int)response.StatusCode >= 500)
-                    {
-                        var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
-                        var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
-                        unavailableUntil[profile.Id] = now + boundedRetry;
-                        RecordActivity(profile, "http_error", (int)response.StatusCode);
-                        // A 503/429 can be specific to one model. Keep other models eligible.
-                        switched = true;
-                        continue;
-                    }
+                    using var response = await client.SendAsync(
+                        request, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token)
+                        .ConfigureAwait(false);
                     if (!response.IsSuccessStatusCode)
                     {
-                        // 4xx is often an invalid key or model; do not retry automatically.
-                        unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
-                        RecordActivity(profile, "http_error", (int)response.StatusCode);
-                        // Invalid model/key may be profile-specific: do not block other models.
+                        // Read at most 4 KiB of error body for *classification
+                        // only*. Never write raw errors, prompts or keys to logs.
+                        string? hint = null;
+                        if (response.StatusCode == HttpStatusCode.TooManyRequests &&
+                            response.Content.Headers.ContentLength is > 0 and <= 4096)
+                        {
+                            hint = await response.Content.ReadAsStringAsync(attemptCts.Token)
+                                .ConfigureAwait(false);
+                        }
+                        var failure = ProviderFailurePolicy.Classify(
+                            response, DateTimeOffset.UtcNow, hint);
+                        unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + failure.Cooldown;
+                        if (Multi && failure.ShareWithOtherAvatars)
+                            sharedQuota.RecordModelCooldown(profile.Provider, profile.Model,
+                                DateTimeOffset.UtcNow, failure.Cooldown);
+                        // Preserve established Web audit vocabulary. The new
+                        // category is a safe, bounded classification label.
+                        RecordActivity(profile, "http_error", (int)response.StatusCode,
+                            durationMs: attemptClock.ElapsedMilliseconds, reason: failure.Category,
+                            cooldownUntilUtc: DateTimeOffset.UtcNow + failure.Cooldown);
                         switched = true;
                         continue;
                     }
-                    using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
-                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: cancellationToken).ConfigureAwait(false);
+                    using var stream = await response.Content.ReadAsStreamAsync(attemptCts.Token).ConfigureAwait(false);
+                    using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: attemptCts.Token).ConfigureAwait(false);
                     var reply = gemini ? GeminiNative.ReadText(doc.RootElement) :
                         doc.RootElement.GetProperty("choices")[0]
                             .GetProperty("message").GetProperty("content").GetString()?.Trim();
                     if (string.IsNullOrEmpty(reply))
                     {
-                        RecordActivity(profile, "empty_reply");
+                        RecordActivity(profile, "empty_reply", durationMs: attemptClock.ElapsedMilliseconds,
+                            reason: "empty_reply");
                         switched = true;
                         continue;
                     }
                     // Preserve the complete model response; the IM transport splits it safely.
                     Remember(sender, now, prompt, reply);
-                    RecordActivity(profile, "success", (int)response.StatusCode, switched);
+                    RecordActivity(profile, "success", (int)response.StatusCode, switched,
+                        durationMs: attemptClock.ElapsedMilliseconds);
                     // Never disclose provider/API keys in resident messages.
                     return (switched && Multi ? SwitchNotice(prompt) : "") + reply;
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { return null; }
-                catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
+                catch (OperationCanceledException)
                 {
-                    unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
-                    RecordActivity(profile, "transport_error");
+                    // Per-attempt deadline: allow the next approved profile
+                    // until the total request deadline expires.
+                    unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
+                    RecordActivity(profile, "transport_error", durationMs: attemptClock.ElapsedMilliseconds,
+                        reason: "timeout", cooldownUntilUtc: unavailableUntil[profile.Id]);
+                    switched = true;
+                }
+                catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
+                {
+                    unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
+                    RecordActivity(profile, "transport_error", durationMs: attemptClock.ElapsedMilliseconds,
+                        reason: ex is HttpRequestException ? "network" : "invalid_response",
+                        cooldownUntilUtc: unavailableUntil[profile.Id]);
                     // Transport error for this model does not disable its provider.
                     switched = true;
                 }

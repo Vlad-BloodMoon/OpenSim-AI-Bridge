@@ -9,6 +9,19 @@ const IDLE_SECONDS = 1800;
 function esc(string $text): string {
     return htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
+/** Display provider event timestamps in the administrator's Paris time zone.
+ * Preserve original UTC values in the controller and activity journal.
+ */
+function ai_paris_time(?string $utc): string {
+    if ($utc === null || trim($utc) === '' || $utc === '—') return '—';
+    try {
+        return (new DateTimeImmutable($utc))
+            ->setTimezone(new DateTimeZone('Europe/Paris'))
+            ->format('d/m/Y H:i:s');
+    } catch (Exception $exception) {
+        return '—';
+    }
+}
 function is_https(): bool {
     return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
         || (isset($_SERVER['SERVER_PORT']) && (int) $_SERVER['SERVER_PORT'] === 443);
@@ -921,18 +934,19 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php if ($page === 'modules'): ?>
 <section class="panel">
 <h2>Activité des modèles IA — <?= esc($selectedName) ?></h2>
-<p class="muted">Historique des 50 derniers événements connus de cet avatar, sans questions, réponses ni clés API. Recharge cette page après un IM pour voir le fournisseur réellement utilisé. Les horodatages sont en UTC.</p>
+<p class="muted">Historique des 50 derniers événements connus de cet avatar, sans questions, réponses ni clés API. Recharge cette page après un IM pour voir le fournisseur réellement utilisé. Les horaires sont affichés en heure de Paris (été/hiver automatique). Les pauses indiquées correspondent aux décisions enregistrées, pas à une vérification en direct de la disponibilité du fournisseur.</p>
 <?php if ($lastAiSuccess !== null): ?>
 <p><strong>Dernière réponse :</strong> <?= esc((string)$lastAiSuccess['provider']) ?> / <?= esc((string)$lastAiSuccess['model']) ?>
-· <?= esc((string)$lastAiSuccess['utc']) ?>
-<?= !empty($lastAiSuccess['switched']) ? ' · 🔄 Basculement réussi' : ' · Réponse directe' ?></p>
+· <?= esc(ai_paris_time((string)$lastAiSuccess['utc'])) ?>
+<?= !empty($lastAiSuccess['switched']) ? ' · 🔄 Basculement réussi' : ' · Réponse directe' ?>
+<?= isset($lastAiSuccess['durationMs']) ? ' · ' . (int)$lastAiSuccess['durationMs'] . ' ms (API)' : '' ?></p>
 <?php else: ?>
 <p class="muted">Aucune réponse enregistrée pour cet avatar. Les événements apparaîtront après le déploiement du nouveau bot et de sa première réponse IA.</p>
 <?php endif ?>
 <?php if ($activityEvents): ?>
 <div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;text-align:left">
-<thead><tr><th>Date UTC</th><th>Fournisseur</th><th>Modèle</th><th>Résultat</th></tr></thead>
+<thead><tr><th>Date (Paris)</th><th>Fournisseur</th><th>Modèle</th><th>Résultat</th><th>Durée API</th><th>Motif</th><th>Pause enregistrée jusqu’à (Paris)</th></tr></thead>
 <tbody>
 <?php
 $activityLabels = [
@@ -942,15 +956,36 @@ $activityLabels = [
     'cooldown' => '⏳ Modèle en pause',
     'not_configured' => '— Clé indisponible',
     'empty_reply' => '⚠️ Réponse vide',
-    'transport_error' => '⚠️ Erreur réseau'
+    'transport_error' => '⚠️ Réseau ou délai dépassé'
+];
+$reasonLabels = [
+    'rate_limit' => 'Limite temporaire 429',
+    'daily_quota' => 'Indice de quota journalier',
+    'timeout' => 'Délai dépassé',
+    'provider_unavailable' => 'Fournisseur indisponible',
+    'auth_failed' => 'Clé refusée',
+    'model_unavailable' => 'Modèle introuvable',
+    'http_error' => 'Erreur HTTP',
+    'profile_cooldown' => 'Pause locale du profil',
+    'model-cooldown' => 'Pause partagée du modèle',
+    'cooldown' => 'Pause fournisseur',
+    'hourly-limit' => 'Quota horaire partagé',
+    'unavailable' => 'Quota indisponible',
+    'missing_key_or_endpoint' => 'Configuration manquante',
+    'empty_reply' => 'Réponse vide',
+    'network' => 'Erreur réseau',
+    'invalid_response' => 'Réponse invalide'
 ];
 foreach ($activityEvents as $activityEvent):
 ?>
 <tr style="border-top:1px solid #36415e">
-<td style="padding:.4rem"><?= esc((string)$activityEvent['utc']) ?></td>
+<td style="padding:.4rem"><?= esc(ai_paris_time((string)$activityEvent['utc'])) ?></td>
 <td style="padding:.4rem"><?= esc((string)$activityEvent['provider']) ?></td>
 <td style="padding:.4rem"><?= esc((string)$activityEvent['model']) ?></td>
 <td style="padding:.4rem"><?= esc($activityLabels[$activityEvent['outcome']] ?? 'Inconnu') ?><?= isset($activityEvent['httpStatus']) && $activityEvent['httpStatus'] !== null ? ' (' . (int)$activityEvent['httpStatus'] . ')' : '' ?><?= !empty($activityEvent['switched']) ? ' · 🔄 Basculement' : '' ?></td>
+<td style="padding:.4rem"><?= isset($activityEvent['durationMs']) ? (int)$activityEvent['durationMs'] . ' ms' : '—' ?></td>
+<td style="padding:.4rem"><?= esc($reasonLabels[$activityEvent['reason'] ?? ''] ?? '—') ?></td>
+<td style="padding:.4rem"><?= esc(ai_paris_time(isset($activityEvent['cooldownUntilUtc']) ? (string)$activityEvent['cooldownUntilUtc'] : null)) ?></td>
 </tr>
 <?php endforeach ?>
 </tbody></table></div>

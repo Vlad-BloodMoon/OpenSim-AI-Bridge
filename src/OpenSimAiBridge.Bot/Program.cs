@@ -68,6 +68,14 @@ if (args.Length == 1 && args[0] == "--verify-invariant-rate")
     return 0;
 }
 
+// Exercise the real IM responder via in-memory fake provider responses.
+// No external API calls and no real credentials are used.
+if (args.Length == 1 && args[0] == "--verify-ai-fallback-http")
+{
+    await AiFallbackIntegrationChecks.RunAsync();
+    return 0;
+}
+
 // Offline safety check: remote AI requires opt-in and key; public access is restricted to Groq.
 if (args.Length == 1 && args[0] == "--verify-ai-safety")
 {
@@ -315,8 +323,55 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
         botA.RecordCooldown("OpenRouter", t, TimeSpan.FromMinutes(3));
         if (botB.TryReserve("OpenRouter", t, 2, out _))
             throw new InvalidOperationException("The shared provider cooldown is not enforced.");
-        if (!botA.TryReserve("Groq", t.AddHours(1), 2, out _))
+        // Model-level cooldowns are independent from the provider's shared
+        // budget and do not consume attempts when skipping blocked models.
+        var modelTime = t.AddHours(2);
+        botA.RecordModelCooldown("Groq", "model-A", modelTime, TimeSpan.FromMinutes(3));
+        if (botB.TryReserve("Groq", modelTime, 2, out var blockedReason, "model-A") ||
+            blockedReason != "model-cooldown")
+            throw new InvalidOperationException("A 429 model cooldown must reach the other avatar.");
+        if (!botB.TryReserve("Groq", modelTime, 2, out _, "model-B") ||
+            !botA.TryReserve("Groq", modelTime, 2, out _, "model-B"))
+            throw new InvalidOperationException("A blocked Groq model must not disable another Groq model.");
+        if (botB.TryReserve("Groq", modelTime, 2, out _, "model-B"))
+            throw new InvalidOperationException("Model cooldown skips must not consume provider budget.");
+        if (!botB.TryReserve("Groq", modelTime.AddHours(1), 2, out _, "model-A"))
+            throw new InvalidOperationException("The expired model cooldown must allow new attempts.");
+        if (!botA.TryReserve("OpenRouter", t.AddHours(1), 2, out _))
             throw new InvalidOperationException("A new hourly bucket must allow fresh requests.");
+        // Deterministic HTTP error policy regressions: no real API requests.
+        using var rateLimit = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        rateLimit.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            modelTime.AddHours(12));
+        var daily = ProviderFailurePolicy.Classify(
+            rateLimit, modelTime, "daily quota reached");
+        if (daily.Category != "daily_quota" || !daily.ShareWithOtherAvatars ||
+            daily.Cooldown != TimeSpan.FromHours(12))
+            throw new InvalidOperationException("Daily quota HTTP-date Retry-After not classified.");
+        using var shortLimit = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        shortLimit.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            TimeSpan.FromSeconds(90));
+        if (ProviderFailurePolicy.Classify(shortLimit, modelTime).Cooldown !=
+            TimeSpan.FromSeconds(90))
+            throw new InvalidOperationException("Retry-After delay-seconds ignored.");
+        using var invalidDate = new HttpResponseMessage(System.Net.HttpStatusCode.TooManyRequests);
+        invalidDate.Headers.RetryAfter = new System.Net.Http.Headers.RetryConditionHeaderValue(
+            modelTime.AddMinutes(-5));
+        if (ProviderFailurePolicy.Classify(invalidDate, modelTime).Cooldown !=
+            TimeSpan.FromMinutes(3))
+            throw new InvalidOperationException("Past Retry-After must use a safe fallback.");
+        using var unauthorized = new HttpResponseMessage(System.Net.HttpStatusCode.Unauthorized);
+        var denied = ProviderFailurePolicy.Classify(unauthorized, modelTime);
+        if (denied.Category != "auth_failed" || denied.ShareWithOtherAvatars)
+            throw new InvalidOperationException("Bad key cannot block other profiles.");
+        using var unavailable = new HttpResponseMessage(System.Net.HttpStatusCode.ServiceUnavailable);
+        if (ProviderFailurePolicy.Classify(unavailable, modelTime).Category != "provider_unavailable")
+            throw new InvalidOperationException("HTTP 503 must be classified as provider unavailable.");
+        botA.RecordModelCooldown("Gemini", "gemini-model-a", modelTime, TimeSpan.FromHours(12));
+        if (botB.TryReserve("Gemini", modelTime.AddHours(2), 2, out _, "gemini-model-a"))
+            throw new InvalidOperationException("Long HTTP-date cooldown must persist between avatars.");
+        if (!botB.TryReserve("Gemini", modelTime.AddHours(13), 2, out _, "gemini-model-a"))
+            throw new InvalidOperationException("Long cooldown must expire without manual reset.");
         Console.WriteLine("Shared provider quota and automatic fallback preconditions passed.");
         return 0;
     }
@@ -356,6 +411,41 @@ if (args.Length == 1 && args[0] == "--verify-im-chunks")
         return 1;
     }
     Console.WriteLine("Full-length UTF-8-safe Firestorm IM delivery checks passed.");
+    return 0;
+}
+
+// Offline regression for bounded fallback. No real network/API calls.
+if (args.Length == 1 && args[0] == "--verify-ai-deadline")
+{
+    if (AiFallbackDeadline.Limit(TimeSpan.FromSeconds(60)) != TimeSpan.FromSeconds(20) ||
+        AiFallbackDeadline.Limit(TimeSpan.FromSeconds(4)) != TimeSpan.FromSeconds(4) ||
+        AiFallbackDeadline.Limit(TimeSpan.Zero) != TimeSpan.Zero ||
+        AiFallbackDeadline.Limit(TimeSpan.FromSeconds(-1)) != TimeSpan.Zero)
+        throw new InvalidOperationException("The total deadline must shorten or stop later attempts.");
+    var manual = new AiFallbackDeadline(false);
+    var auto = new AiFallbackDeadline(true);
+    if (manual.NextAttemptTimeout() > TimeSpan.FromSeconds(20) ||
+        auto.NextAttemptTimeout() > TimeSpan.FromSeconds(20) ||
+        manual.NextAttemptTimeout() <= TimeSpan.Zero ||
+        auto.NextAttemptTimeout() <= TimeSpan.Zero)
+        throw new InvalidOperationException("First attempts must retain their original 20s limit.");
+
+    // A timed-out attempt must not cancel the caller's token or prevent a
+    // subsequent attempt from receiving a fresh per-attempt deadline.
+    using var caller = new CancellationTokenSource();
+    using (var attempt = CancellationTokenSource.CreateLinkedTokenSource(caller.Token))
+    {
+        attempt.CancelAfter(TimeSpan.FromMilliseconds(10));
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(2), attempt.Token);
+            throw new InvalidOperationException("Simulated provider should have timed out.");
+        }
+        catch (OperationCanceledException) when (!caller.IsCancellationRequested) { }
+    }
+    if (caller.IsCancellationRequested || auto.NextAttemptTimeout() <= TimeSpan.Zero)
+        throw new InvalidOperationException("An expired provider attempt must preserve fallback.");
+    Console.WriteLine("AI deadline, cancellation and fallback continuity checks passed.");
     return 0;
 }
 

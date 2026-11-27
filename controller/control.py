@@ -174,9 +174,30 @@ def read_ai_activity(install):
                                    "transport_error")
                 or not (code is None or type(code) is int and 100 <= code <= 599)):
                 continue
+            # Optional versioned fields: old avatars retain their existing display.
+            # Never propagate any arbitrary upstream payload or unapproved JSON keys.
+            duration = value.get("durationMs")
+            if type(duration) is not int or not 0 <= duration <= 120000:
+                duration = None
+            reason = value.get("reason")
+            allowed_reasons = frozenset((
+                "rate_limit", "daily_quota", "timeout", "provider_unavailable",
+                "auth_failed", "model_unavailable", "http_error",
+                "profile_cooldown", "model-cooldown", "cooldown", "hourly-limit",
+                "reserved", "unavailable", "missing_key_or_endpoint",
+                "empty_reply", "network", "invalid_response"
+            ))
+            if not isinstance(reason, str) or reason not in allowed_reasons:
+                reason = None
+            cooldown_until = value.get("cooldownUntilUtc")
+            if (not isinstance(cooldown_until, str) or len(cooldown_until) > 40
+                or not cooldown_until.endswith(("Z", "+00:00"))):
+                cooldown_until = None
             results.append({"utc": utc, "provider": provider, "model": model,
                             "outcome": outcome, "httpStatus": code,
-                            "switched": value.get("switched") is True})
+                            "switched": value.get("switched") is True,
+                            "durationMs": duration, "reason": reason,
+                            "cooldownUntilUtc": cooldown_until})
         return {"events": list(reversed(results))}
     except FileNotFoundError:
         return {"events": []}

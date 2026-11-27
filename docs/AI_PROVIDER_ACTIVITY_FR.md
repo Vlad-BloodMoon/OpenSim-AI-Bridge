@@ -14,6 +14,18 @@ Le fait qu'un bot réponde en IM ne prouve pas quel fournisseur a été utilisé
 - Les profils désactivés/non vérifiés ne sont pas tentés et n'apparaissent donc pas comme échecs : ne pas confondre configuration et activité réelle.
 - **Aucun texte d'IM, UUID résident, clé API, réponse, adresse IP, coût ni volume de tokens** ne sont enregistrés dans ce journal.
 
+## Évolution V1 — concordance avec les événements du routeur (branche de développement)
+
+**Non déployé en production ; ne concerne pas encore la release v1.1.0.**
+
+- Chaque **tentative réelle** (réussie, HTTP, réponse vide ou erreur réseau) peut porter `durationMs`, mesuré par chronomètre monotone, couvrant l'appel API et la lecture de sa réponse. Cela **n'inclut pas** la traduction ni la recherche documentaire réalisées avant l'appel.
+- Les événements HTTP portent `reason` issu de la même classification que le routeur : `rate_limit`, `daily_quota` (indice textuel, non garantie du fournisseur), `auth_failed`, `model_unavailable` et `provider_unavailable`. Les événements de délai dépassé portent `timeout`.
+- `cooldownUntilUtc` rapporte **l'échéance calculée lors de cet événement** : c'est une information historique, **pas une interrogation en temps réel** du fournisseur ni l'état actuel de l'ensemble des avatars. Les changements ultérieurs de cooldown ne modifient pas rétroactivement les anciens événements.
+- Les tentatives **ignorées sans appel API** (quota local, pause, absence de clé) ne disposent pas de `durationMs`, conformément à la réalité.
+- Le contrôleur n'expose au Web que les champs explicites, la durée entière bornée, une liste fermée de motifs techniques et l'horodatage UTC. Aucun texte d'IM, clé, en-tête brut, adresse résident ou corps de réponse.
+- Les anciens journaux de la v1.1.0 sans ces nouveaux champs restent lisibles ; la page affiche « — » pour les champs manquants.
+- **Tests requis avant toute fusion** : compilation .NET, `python3 -m unittest discover -s tests -v`, `php -l web/OpenSim_AI/index.php`, puis validation IM et historique sur avatar de test. L'activité Web n'a jamais le droit d'empêcher le bot de répondre.
+
 ## Fichiers privés
 
 Le bot écrit un fichier JSON privé sous `data/ai-provider-activity.json` **à côté du `appsettings.json` du bot** : installation principale, ou `/var/lib/opensim-ai-bridge/bots/<id>/data` pour un bot secondaire. Écriture atomique, maximum 100 événements, et aucune dépendance réseau supplémentaire.

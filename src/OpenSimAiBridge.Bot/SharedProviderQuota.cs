@@ -23,7 +23,7 @@ public sealed class SharedProviderQuota
         return Path.Combine(install, "data", "ai-provider-quotas.db");
     }
 
-    public bool TryReserve(string provider, DateTimeOffset now, int maxPerHour, out string reason)
+    public bool TryReserve(string provider, DateTimeOffset now, int maxPerHour, out string reason, string? model = null)
     {
         reason = "unavailable";
         if (provider is not ("Groq" or "OpenRouter" or "Gemini" or "OpenAI") || maxPerHour is < 1 or > 120)
@@ -51,6 +51,36 @@ public sealed class SharedProviderQuota
                         );
                         """;
                     create.ExecuteNonQuery();
+                    // Additive schema: existing provider_budget records remain untouched.
+                    create.CommandText = """
+                        CREATE TABLE IF NOT EXISTS model_cooldown (
+                            provider TEXT NOT NULL,
+                            model TEXT NOT NULL,
+                            cooldown_until INTEGER NOT NULL,
+                            PRIMARY KEY(provider,model)
+                        );
+                        """;
+                    create.ExecuteNonQuery();
+                }
+                // Model-specific upstream failures must not disable every model
+                // from the same provider. Check BEFORE consuming a provider budget.
+                if (!string.IsNullOrEmpty(model))
+                {
+                    using var scope = conn.CreateCommand();
+                    scope.Transaction = tx;
+                    scope.CommandText = """
+                        SELECT cooldown_until FROM model_cooldown
+                        WHERE provider=$p AND model=$m
+                        """;
+                    scope.Parameters.AddWithValue("$p", provider);
+                    scope.Parameters.AddWithValue("$m", model);
+                    var until = scope.ExecuteScalar();
+                    if (until is long deadline && deadline > epoch)
+                    {
+                        reason = "model-cooldown";
+                        tx.Commit();
+                        return false;
+                    }
                 }
                 long lastHour = -1;
                 long attempts = 0;
@@ -132,6 +162,54 @@ public sealed class SharedProviderQuota
         catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)
         {
             // Future calls fail closed on inaccessible store.
+        }
+    }
+
+    /// <summary>
+    /// Store a model-specific upstream cooldown for all avatar processes.
+    /// This is separate from provider_budget's account-wide safety ceiling;
+    /// other models at the same provider remain available.
+    /// Never record API keys or resident data.
+    /// </summary>
+    public void RecordModelCooldown(string provider, string model, DateTimeOffset now, TimeSpan duration)
+    {
+        if (provider is not ("Groq" or "OpenRouter" or "Gemini" or "OpenAI") ||
+            string.IsNullOrWhiteSpace(model) || model.Length > 100 ||
+            !Directory.Exists(Path.GetDirectoryName(databasePath))) return;
+        var seconds = Math.Clamp((long)Math.Ceiling(duration.TotalSeconds), 1, 86400);
+        try
+        {
+            lock (localLock)
+            {
+                using var conn = Connect();
+                using var tx = conn.BeginTransaction(System.Data.IsolationLevel.Serializable);
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = """
+                    CREATE TABLE IF NOT EXISTS model_cooldown (
+                        provider TEXT NOT NULL,
+                        model TEXT NOT NULL,
+                        cooldown_until INTEGER NOT NULL,
+                        PRIMARY KEY(provider,model)
+                    );
+                    """;
+                cmd.ExecuteNonQuery();
+                cmd.CommandText = """
+                    INSERT INTO model_cooldown(provider,model,cooldown_until)
+                    VALUES($p,$m,$until)
+                    ON CONFLICT(provider,model) DO UPDATE SET
+                        cooldown_until=MAX(model_cooldown.cooldown_until,excluded.cooldown_until)
+                    """;
+                cmd.Parameters.AddWithValue("$p", provider);
+                cmd.Parameters.AddWithValue("$m", model);
+                cmd.Parameters.AddWithValue("$until", now.ToUnixTimeSeconds() + seconds);
+                cmd.ExecuteNonQuery();
+                tx.Commit();
+            }
+        }
+        catch (Exception ex) when (ex is SqliteException or IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            // On unavailable shared storage, existing reservation checks fail closed.
         }
     }
 
