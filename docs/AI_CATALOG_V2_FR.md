@@ -44,3 +44,13 @@ Si aucun cache n'est présent, l'onglet l'indique ; les modèles déjà configur
 - **À finir avant fusion :** exercice complet d'installation V1→V2, validation effective de l'import du flux depuis l'environnement cible, contrôle des droits et retour arrière sur robust-vm. L'ajout d'un profil actif continue de passer par les protections V1.
 
 La présence de fournisseurs `groq`, `gemini` ou `openrouter` dans le catalogue ne prouve **pas** qu'un modèle précis est accepté par le routeur V1. L'indicateur de compatibilité sur la page signale uniquement que le *fournisseur* possède déjà un adaptateur.
+
+## Tests génériques OpenAI-compatibles (étape V2)
+
+Le catalogue signale que certains fournisseurs proposent une interface de type OpenAI ; cela n'est pas une preuve de compatibilité ni une autorisation de leur confier des secrets.
+
+Un nouveau module indépendant `controller/catalog_probe.py` réalise **uniquement sur clic d'un administrateur connecté** une requête courte de type `POST /chat/completions`, avec une clé API fournie pour cette requête. Il ne sauvegarde ni la clé ni la réponse, n'ajoute ni n'active aucun profil et n'intervient pas dans les IM. Une réussite signifie « une réponse texte valide a été observée », pas « modèle gratuit », « quota garanti » ou « intégré au routeur ».
+
+**Premiers fournisseurs autorisés explicitement :** Cerebras (`api.cerebras.ai`) et Cohere (`api.cohere.ai`). URL HTTPS fixe dans le code, aucun hôte fourni par le navigateur ou le catalogue, aucune redirection, timeout 12 s, taille de réponse limitée. Un nouveau fournisseur nécessite une revue de son domaine, de sa politique de clé, de sa tarification et de ses conditions avant de l'ajouter à cette liste. Un test consomme du quota et peut être facturé.
+
+Les fournisseurs Groq, OpenRouter et Gemini restent configurés et testables via **Modules IA**. Le nouveau module ne change pas les autorisations, le budget ou la logique de repli de la V1. **Aucun fournisseur générique n'est encore activable en production** : l'étape suivante sera le support du transport dans le routeur .NET avec quotas et validation des coûts, après un test réel concluant.
