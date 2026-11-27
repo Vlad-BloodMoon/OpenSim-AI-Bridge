@@ -24,9 +24,10 @@ import time
 import multi_bot
 import provider_profiles
 import protected_terms
+import catalog_cache
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -762,9 +763,62 @@ def knowledge_local_refresh(install):
     return {"started": True}
 
 
+def catalog_list(filters=None):
+    """Read-only, capped catalog search independent of every avatar and AI key."""
+    filters = filters if isinstance(filters, dict) else {}
+    if set(filters) - {"query", "provider", "compatibility"}:
+        raise ControlError("Invalid catalog search")
+    query = filters.get("query", "")
+    provider = filters.get("provider", "")
+    compatibility = filters.get("compatibility", "all")
+    if (not isinstance(query, str) or len(query) > 100
+        or not isinstance(provider, str) or len(provider) > 80
+        or compatibility not in ("all", "supported", "other")):
+        raise ControlError("Invalid catalog filters")
+    try:
+        snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+    except (catalog_cache.CatalogError, OSError):
+        snapshot = None
+    if snapshot is None:
+        return {"available": False, "models": [], "total": 0, "generatedAtUtc": None}
+    matched = []
+    query = query.casefold().strip()
+    provider = provider.casefold().strip()
+    for record in snapshot["models"][:catalog_cache.MAX_DOWNLOAD_BYTES]:
+        if not isinstance(record, dict):
+            continue
+        if provider and str(record.get("provider", "")).casefold() != provider:
+            continue
+        supported = record.get("routerCompatible") is True
+        if compatibility == "supported" and not supported:
+            continue
+        if compatibility == "other" and supported:
+            continue
+        if query and query not in (" ".join(str(record.get(k, "")) for k in
+                ("providerName", "provider", "model", "modelName"))).casefold():
+            continue
+        matched.append({
+            "provider": str(record.get("provider", ""))[:80],
+            "providerName": str(record.get("providerName", ""))[:120],
+            "model": str(record.get("model", ""))[:100],
+            "modelName": str(record.get("modelName", ""))[:150],
+            "sourceUrl": str(record.get("sourceUrl", ""))[:500],
+            "freeTierClaim": str(record.get("freeTierClaim", "unknown"))[:40],
+            "routerCompatible": supported,
+            "contextTokens": record.get("contextTokens")
+                if type(record.get("contextTokens")) is int else None,
+            "vision": record.get("vision") is True,
+        })
+    return {"available": True, "models": matched[:30], "total": len(matched),
+            "generatedAtUtc": str(snapshot.get("generatedAtUtc", ""))[:64]}
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
+
+    if command == "catalog_list":
+        return catalog_list(settings)
 
     if command == "test_multi_ai_profile":
         return test_multi_ai_profile(install, settings)
