@@ -13,8 +13,28 @@ SCHEMA_VERSION = 2
 MAX_PROVIDERS = 250
 MAX_MODELS = 3000
 MAX_FIELD = 300
-# Catalog slugs do not always match our internal adapter identifiers.
-SUPPORTED_ROUTER_PROVIDERS = frozenset({"groq", "groq-cloud", "openrouter", "gemini"})
+# Explicit aliases for the three remote providers implemented by our V1 router.
+# Catalog entries from OTHER aggregators (including models named "Gemini")
+# must never be treated as Gemini's direct API.
+CATALOG_ADAPTERS = {
+    "groq": "Groq",
+    "groq-cloud": "Groq",
+    "openrouter": "OpenRouter",
+    "gemini": "Gemini",
+    "google-ai-studio": "Gemini",
+}
+
+
+def adapter_for_slug(slug):
+    """Return a supported V1 remote adapter, never infer from model names."""
+    return CATALOG_ADAPTERS.get(slug) if isinstance(slug, str) else None
+
+
+def catalog_provider_search_text(slug, display_name):
+    """Accept either catalog names (Google AI Studio) or V1 names (Gemini)."""
+    adapter = adapter_for_slug(slug)
+    return " ".join(value for value in (slug, display_name, adapter) if isinstance(value, str))
+
 
 
 class CatalogError(ValueError):
@@ -106,7 +126,7 @@ def normalize_catalog(payload):
                 "dailyLimitClaim": _clean(provider.get("daily_limit")),
                 "sourceUrl": url,
                 "apiBaseUrl": base_url,
-                "routerCompatible": slug in SUPPORTED_ROUTER_PROVIDERS,
+                "routerCompatible": adapter_for_slug(slug) is not None,
                 "approved": False,
                 "enabled": False,
             })
