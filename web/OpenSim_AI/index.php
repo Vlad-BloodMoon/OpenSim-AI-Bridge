@@ -431,6 +431,20 @@ $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_sett
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
 $multiResult = $authenticated && $page === 'modules' ? request_control('get_multi_ai_settings', false, null, $selectedBot) : null;
 $multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
+$addCatalogProvider = is_string($_GET['addProvider'] ?? null) ? $_GET['addProvider'] : '';
+$addCatalogModel = is_string($_GET['addModel'] ?? null) ? $_GET['addModel'] : '';
+$catalogChoice = null;
+$catalogChoiceError = '';
+if ($authenticated && $page === 'modules' && $addCatalogProvider !== '' && $addCatalogModel !== '') {
+    $lookup = request_control('catalog_lookup', false, [
+        'provider' => $addCatalogProvider, 'model' => $addCatalogModel
+    ]);
+    if (!empty($lookup['ok']) && is_array($lookup['result'] ?? null)) {
+        $catalogChoice = $lookup['result'];
+    } else {
+        $catalogChoiceError = 'Modèle indisponible ou non compatible avec le routeur. Aucun profil ajouté.';
+    }
+}
 $avatarAiResult = $authenticated && $page === 'modules' ? request_control('get_avatar_ai_enabled', false, null, $selectedBot) : null;
 $avatarAiEnabled = ($avatarAiResult['result']['enabled'] ?? false) === true;
 $activityResult = $authenticated && $page === 'modules' ? request_control('ai_activity', false, null, $selectedBot) : null;
@@ -976,10 +990,11 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <h2>Catalogue des modèles IA distants</h2>
 <?php if ($catalogPrepared !== null): ?>
 <div class="notice" role="status">
-<strong>Préparation du profil — aucune activation effectuée</strong>
+<strong>Ajouter ce modèle à mes IA — sans activation automatique</strong>
 <p>Fournisseur : <strong><?= esc((string)$catalogPrepared['providerName']) ?></strong>
  · Modèle : <code><?= esc((string)$catalogPrepared['model']) ?></code></p>
-<p class="muted">Ce modèle est seulement proposé par un annuaire externe. Sa gratuité et son fonctionnement réel ne sont pas garantis. Vérifie d’abord les conditions officielles du fournisseur. Ensuite, dans <a href="?page=modules&amp;bot=<?= esc($selectedBot) ?>">Modules IA</a>, ajoute un moteur avec cet identifiant, en le laissant <strong>désactivé</strong>. L’activation publique exige toujours une clé autorisée et un test explicite.</p>
+<p class="muted">Ce modèle est seulement proposé par un annuaire externe. Sa gratuité et son fonctionnement réel ne sont pas garantis. Vérifie d’abord les conditions officielles du fournisseur. Tu peux préparer son profil désactivé en un clic, sans modifier les réglages existants. Un test réel consomme éventuellement du quota et n’est possible que si les règles du fournisseur le permettent.</p>
+<p><a href="?page=modules&amp;bot=<?= rawurlencode($selectedBot) ?>&amp;addProvider=<?= rawurlencode((string)$catalogPrepared['provider']) ?>&amp;addModel=<?= rawurlencode((string)$catalogPrepared['model']) ?>">Ajouter à mes IA (désactivé)</a></p>
 </div>
 <?php endif ?>
 <p class="muted">Catalogue consultatif de Free-LLM : les informations de gratuité, quotas et compatibilité peuvent changer. Aucun modèle n'est ajouté ou activé automatiquement, aucune clé API n'est transmise au catalogue et aucune donnée de résidents n'est utilisée.</p>
@@ -1140,7 +1155,7 @@ foreach ($activityEvents as $activityEvent):
 </form>
 </section>
 <section class="panel">
-<details class="ai-fold ai-global-fold">
+<details class="ai-fold ai-global-fold"<?= $catalogChoice !== null ? ' open' : '' ?>>
 <summary><strong>Configuration multi-IA globale</strong> — <?= !empty($multiSettings['enabled']) ? 'Activée' : 'Désactivée' ?> · <?= esc((string)($multiSettings['mode'] ?? 'auto')) ?></summary>
 <p class="muted">Une chaîne de moteurs IA distants, ordonnée par priorité. Le premier moteur actif et testé est utilisé ; le mode multi-IA tente le suivant si le précédent est indisponible ou limité. Tous les résidents peuvent dialoguer en IM avec cet avatar lorsqu'au moins un moteur public approuvé est activé.</p>
 <?php if ($multiSettings === null): ?>
@@ -1168,6 +1183,17 @@ foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-3.5-flash-lite'
 </select>
 </fieldset>
 <h3>Priorité et configuration des moteurs</h3>
+<?php if ($catalogChoiceError !== ''): ?>
+<div class="notice error"><?= esc($catalogChoiceError) ?></div>
+<?php elseif ($catalogChoice !== null): ?>
+<div class="notice" role="status">
+<strong>Modèle sélectionné : <?= esc((string)$catalogChoice['modelName']) ?></strong>
+<p>Le nouveau moteur est prérempli, mais <strong>désactivé</strong> et non testé. Vérifie sa gratuité, sa clé API et ses conditions d’utilisation. Enregistre d’abord la configuration, puis utilise « Tester le modèle enregistré ». L’activation est une décision séparée.</p>
+<?php if (empty($catalogChoice['publicEligible'])): ?>
+<p><strong>Attention :</strong> ce modèle ne satisfait pas actuellement nos règles de gratuité pour le routage public. Tu peux le préparer, mais pas l’approuver pour le routage public.</p>
+<?php endif ?>
+</div>
+<?php endif ?>
 <p class="muted">Utilise ↑ et ↓ pour changer leur ordre. Les moteurs non testés ne sont jamais utilisés. Enregistre d'abord un nouveau modèle ou une nouvelle clé, puis clique sur « Tester ». Un test réel consomme une requête API et peut être facturé si tu as activé la facturation chez le fournisseur.</p>
 <div style="display:flex;justify-content:flex-end;margin:.6rem 0">
 <button type="button" class="secondary" id="ai-add-profile">+ Ajouter un moteur</button>
@@ -1296,6 +1322,30 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
     }
   });
   renumber();
+<?php if ($catalogChoice !== null): ?>
+  // Selection verified server-side against the cached catalog. No persistence
+  // until the administrator explicitly saves; no test or activation performed.
+  var selectedProvider = <?= json_encode((string)$catalogChoice['provider'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+  var selectedModel = <?= json_encode((string)$catalogChoice['model'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+  var existing = Array.from(list.querySelectorAll('.ai-profile')).find(function (card) {
+    return card.querySelector('[data-field="provider"]').value === selectedProvider &&
+           card.querySelector('[data-field="model"]').value === selectedModel;
+  });
+  if (existing) {
+    existing.scrollIntoView({block:'center', behavior:'smooth'});
+  } else if (list.querySelectorAll('.ai-profile').length < 16) {
+    add.click();
+    var created = list.querySelector('.ai-profile:last-child');
+    created.querySelector('[data-field="provider"]').value = selectedProvider;
+    created.querySelector('[data-field="model"]').value = selectedModel;
+    created.querySelector('[data-field="enabled"]').checked = false;
+    created.querySelector('.ai-rank').textContent =
+      list.querySelectorAll('.ai-profile').length + '. ' + selectedProvider;
+    created.scrollIntoView({block:'center', behavior:'smooth'});
+  } else {
+    alert('16 profils présents : retire un profil inutile avant tout ajout.');
+  }
+<?php endif ?>
 }());
 </script>
 <?php endif ?>
