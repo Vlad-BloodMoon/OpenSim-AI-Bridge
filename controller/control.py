@@ -798,9 +798,11 @@ def catalog_list(filters=None):
     for record in snapshot["models"][:3000]:
         if not isinstance(record, dict):
             continue
-        if provider and str(record.get("provider", "")).casefold() != provider:
+        if provider and provider not in (
+            str(record.get("provider", "")) + " " + str(record.get("providerName", ""))
+        ).casefold():
             continue
-        supported = record.get("routerCompatible") is True
+        supported = record.get("routerCompatible") is True or record.get("provider") == "groq-cloud"
         if compatibility == "supported" and not supported:
             continue
         if compatibility == "other" and supported:
@@ -858,7 +860,7 @@ def catalog_lookup(values):
         or not isinstance(values["model"], str)):
         raise ControlError("Invalid catalog selection")
     provider, model = values["provider"], values["model"]
-    mapping = {"groq": "Groq", "openrouter": "OpenRouter", "gemini": "Gemini"}
+    mapping = {"groq": "Groq", "groq-cloud": "Groq", "openrouter": "OpenRouter", "gemini": "Gemini"}
     if provider not in mapping or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,100}", model):
         raise ControlError("No supported route for selected model")
     try:
