@@ -25,6 +25,7 @@ import multi_bot
 import provider_profiles
 import protected_terms
 import catalog_cache
+import catalog_models
 
 UNIT = "opensim-ai-bridge.service"
 COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list", "catalog_lookup"))
@@ -798,17 +799,18 @@ def catalog_list(filters=None):
     for record in snapshot["models"][:3000]:
         if not isinstance(record, dict):
             continue
-        if provider and provider not in (
-            str(record.get("provider", "")) + " " + str(record.get("providerName", ""))
-        ).casefold():
+        provider_text = catalog_models.catalog_provider_search_text(
+            record.get("provider"), record.get("providerName"))
+        if provider and provider not in provider_text.casefold():
             continue
-        supported = record.get("routerCompatible") is True or record.get("provider") == "groq-cloud"
+        supported = catalog_models.adapter_for_slug(record.get("provider")) is not None
         if compatibility == "supported" and not supported:
             continue
         if compatibility == "other" and supported:
             continue
         if query and query not in (" ".join(str(record.get(k, "")) for k in
-                ("providerName", "provider", "model", "modelName"))).casefold():
+                ("providerName", "provider", "model", "modelName"))) .casefold() + " " +
+                provider_text.casefold():
             continue
         matched.append({
             "provider": str(record.get("provider", ""))[:80],
@@ -860,8 +862,8 @@ def catalog_lookup(values):
         or not isinstance(values["model"], str)):
         raise ControlError("Invalid catalog selection")
     provider, model = values["provider"], values["model"]
-    mapping = {"groq": "Groq", "groq-cloud": "Groq", "openrouter": "OpenRouter", "gemini": "Gemini"}
-    if provider not in mapping or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,100}", model):
+    adapter = catalog_models.adapter_for_slug(provider)
+    if adapter is None or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,100}", model):
         raise ControlError("No supported route for selected model")
     try:
         snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
@@ -873,9 +875,9 @@ def catalog_lookup(values):
         if not isinstance(record, dict):
             continue
         if record.get("provider") == provider and record.get("model") == model:
-            return {"provider": mapping[provider], "model": model,
+            return {"provider": adapter, "model": model,
                     "modelName": str(record.get("modelName", ""))[:150],
-                    "publicEligible": provider_profiles.public_eligible(mapping[provider], model),
+                    "publicEligible": provider_profiles.public_eligible(adapter, model),
                     "configured": False, "enabled": False}
     raise ControlError("Model no longer in the imported catalog")
 
