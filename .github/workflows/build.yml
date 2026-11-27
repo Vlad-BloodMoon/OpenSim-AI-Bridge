@@ -98,6 +98,7 @@ jobs:
           mkdir -p dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI
           cp controller/control.py controller/multi_bot.py controller/provider_profiles.py controller/protected_terms.py dist/linux-x64/controller/
           cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
+          cp docs/FILES_PDFS_KNOWLEDGE_FR.md dist/linux-x64/
           cp docs/WEB_INSTALL_V02_FR.md dist/linux-x64/
           cp docs/MULTI_BOT_V02_FR.md docs/REMOTE_AI_V03_FR.md dist/linux-x64/
 
