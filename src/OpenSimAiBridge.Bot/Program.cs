@@ -68,6 +68,14 @@ if (args.Length == 1 && args[0] == "--verify-invariant-rate")
     return 0;
 }
 
+// Exercise the real IM responder via in-memory fake provider responses.
+// No external API calls and no real credentials are used.
+if (args.Length == 1 && args[0] == "--verify-ai-fallback-http")
+{
+    await AiFallbackIntegrationChecks.RunAsync();
+    return 0;
+}
+
 // Offline safety check: remote AI requires opt-in and key; public access is restricted to Groq.
 if (args.Length == 1 && args[0] == "--verify-ai-safety")
 {
