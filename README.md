@@ -28,6 +28,14 @@
 
 The bot uses **the resident's original message** for the AI answer and adds an Azure-translated version for searching documentation. Azure translation does not guarantee that domain-specific terms are translated correctly; the editable protected vocabulary helps retrieval retain names such as *Freeland*, *HUD* or *Hypergrid*. It is not a universal translation glossary.
 
+## Roadmap — smarter remote AI routing / Routage IA amélioré
+
+**FR —** [Plan d'action détaillé : fallback partagé, suivi des quotas, annuaire de modèles distants et sélection intelligente](docs/AI_ROUTER_CATALOG_ROADMAP_FR.md). Ce plan inclut des liens vers [FreeLLMAPI](https://github.com/tashfeenahmed/freellmapi) et [Free-LLM](https://github.com/nejib1/Free-LLM), des références vers les fichiers de leur code, les précautions de licence/sécurité et les tests attendus. Les fonctions listées sont **à développer** : leur présence dans le TODO ne signifie pas qu'elles sont déjà disponibles.
+
+**Suivi GitHub :** [V1 — fiabilité du fallback](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/2) · [V2 — catalogue distant](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/3) · [V3 — pilotage intelligent](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/4).
+
+**EN —** A [detailed French implementation roadmap](docs/AI_ROUTER_CATALOG_ROADMAP_FR.md) tracks shared provider cooldowns, remote-only model discovery and opt-in adaptive routing. These are **planned** changes, not current capabilities. The existing router, provider keys, admin UI and SQLite knowledge base remain the foundation; no local LLM is planned.
+
 ## Architecture / Architecture
 
 ```text
