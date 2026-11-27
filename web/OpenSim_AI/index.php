@@ -159,7 +159,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'vocabulary_upsert' || $action === 'vocabulary_delete') {
+        if ($action === 'catalog_probe') {
+            $page = 'catalog';
+            $provider = is_string($_POST['catalogProvider'] ?? null) ? $_POST['catalogProvider'] : '';
+            $model = is_string($_POST['catalogModel'] ?? null) ? $_POST['catalogModel'] : '';
+            $apiKey = is_string($_POST['catalogApiKey'] ?? null) ? $_POST['catalogApiKey'] : '';
+            $response = request_control('catalog_probe', false, [
+                'provider' => $provider, 'model' => $model, 'apiKey' => $apiKey
+            ]);
+            unset($apiKey);
+            if (!empty($response['ok']) && !empty($response['result']['success'])) {
+                $message = 'Test réussi : API compatible avec chat/completions ! Aucun modèle activé et aucune clé conservée.';
+            } else {
+                $error = (string)($response['error'] ?? 'Test API échoué.');
+            }
+        } elseif ($action === 'vocabulary_upsert' || $action === 'vocabulary_delete') {
             $page = 'knowledge';
             $term = is_string($_POST['term'] ?? null) ? trim($_POST['term']) : '';
             if ($action === 'vocabulary_upsert') {
@@ -485,7 +499,20 @@ $catalog = is_array($catalogResponse['result'] ?? null) ? $catalogResponse['resu
 $catalogCurrentPage = max(1, (int)($catalog['page'] ?? 1));
 $catalogPages = max(0, (int)($catalog['pages'] ?? 0));
 $catalogPrepare = is_string($_GET['prepare'] ?? null) ? (string)$_GET['prepare'] : '';
+$catalogProbeSelection = is_string($_GET['probe'] ?? null) ? $_GET['probe'] : '';
+$catalogProbeRecord = null;
 $catalogPrepared = null;
+if ($catalogProbeSelection !== '' && strlen($catalogProbeSelection) <= 190 &&
+    is_array($catalog['models'] ?? null)) {
+    foreach ($catalog['models'] as $candidate) {
+        if (!is_array($candidate) || empty($candidate['probeAvailable'])) continue;
+        if (hash_equals((string)($candidate['provider'] ?? '') . '|' .
+                        (string)($candidate['model'] ?? ''), $catalogProbeSelection)) {
+            $catalogProbeRecord = $candidate;
+            break;
+        }
+    }
+}
 if ($catalogPrepare !== '' && strlen($catalogPrepare) <= 190 && is_array($catalog['models'] ?? null)) {
     foreach ($catalog['models'] as $candidate) {
         if (!is_array($candidate) || empty($candidate['routerCompatible'])) continue;
@@ -988,6 +1015,23 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php if ($page === 'catalog'): ?>
 <section class="panel">
 <h2>Catalogue des modèles IA distants</h2>
+<?php if ($catalogProbeRecord !== null): ?>
+<div class="panel">
+<h3>Tester une API compatible OpenAI — <?= esc((string)$catalogProbeRecord['providerName']) ?></h3>
+<p>Modèle : <code><?= esc((string)$catalogProbeRecord['model']) ?></code>. Ce test effectue une véritable requête à l'API du fournisseur et peut consommer du quota ou entraîner des frais selon ton compte. Aucune clé n'est enregistrée et aucun modèle n'est activé.</p>
+<form method="post" autocomplete="off">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="catalog">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="catalogProvider" value="<?= esc((string)$catalogProbeRecord['provider']) ?>">
+<input type="hidden" name="catalogModel" value="<?= esc((string)$catalogProbeRecord['model']) ?>">
+<label for="catalog-probe-key">Clé API du fournisseur (utilisée uniquement pour ce test)</label>
+<input type="password" id="catalog-probe-key" name="catalogApiKey" maxlength="256" autocomplete="new-password" required>
+<button type="submit" name="action" value="catalog_probe">Lancer le test réel</button>
+</form>
+<p class="muted">Un test réussi prouve seulement que cette API a répondu avec le format attendu. L'intégration au routeur en production nécessite encore une approbation distincte.</p>
+</div>
+<?php endif ?>
 <?php if ($catalogPrepared !== null): ?>
 <div class="notice" role="status">
 <strong>Ajouter ce modèle à mes IA — sans activation automatique</strong>
@@ -1037,7 +1081,7 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <th><a href="<?= esc($catalogLink($sortField, $nextDirection, 1)) ?>"
     aria-label="Trier par <?= esc($sortLabel) ?>" style="white-space:nowrap"><?= esc($sortLabel . $sortIndicator) ?></a></th>
 <?php endforeach ?>
-<th>Source</th><th>Préparer</th></tr></thead>
+<th>Source</th><th>Préparer</th><th>Test API</th></tr></thead>
 <tbody>
 <?php foreach ($catalog['models'] as $model): ?>
 <tr style="border-top:1px solid #36415e">
@@ -1049,6 +1093,9 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <td style="padding:.4rem"><?php $modelUrl = (string)($model['sourceUrl'] ?? ''); ?><?php if (str_starts_with($modelUrl, 'https://free-llm.com/')): ?><a href="<?= esc($modelUrl) ?>" rel="noopener noreferrer">Fiche</a><?php else: ?>—<?php endif ?></td>
 <td style="padding:.4rem"><?php if (!empty($model['routerCompatible'])): ?>
 <a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage, (string)$model['provider'] . '|' . (string)$model['model'])) ?>">Préparer</a>
+<?php else: ?>—<?php endif ?></td>
+<td style="padding:.4rem"><?php if (!empty($model['probeAvailable'])): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage)) ?>&amp;probe=<?= rawurlencode((string)$model['provider'] . '|' . (string)$model['model']) ?>">Tester l’API</a>
 <?php else: ?>—<?php endif ?></td>
 </tr>
 <?php endforeach ?>
