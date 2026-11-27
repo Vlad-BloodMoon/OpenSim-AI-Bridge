@@ -1,0 +1,18 @@
+[Unit]
+Description=OpenSim AI Bridge optional remote model catalog refresh
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+WorkingDirectory=/usr/local/libexec/opensim-ai-bridge
+ExecStart=/usr/bin/python3 /usr/local/libexec/opensim-ai-bridge/catalog_cache.py --cache /var/lib/opensim-ai-bridge/catalog/catalog.json
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/opensim-ai-bridge/catalog
+UMask=0077
+TimeoutStartSec=30

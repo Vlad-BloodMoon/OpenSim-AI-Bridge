@@ -39,7 +39,7 @@ jobs:
       - name: Validate control scripts and web dashboard
         run: |
           bash -n scripts/*.sh
-          python3 -m py_compile controller/control.py controller/multi_bot.py controller/provider_profiles.py controller/protected_terms.py knowledge/knowledge_cli.py
+          python3 -m py_compile controller/control.py controller/multi_bot.py controller/provider_profiles.py controller/protected_terms.py controller/catalog_models.py controller/catalog_cache.py controller/catalog_probe.py knowledge/knowledge_cli.py
           python3 -m unittest discover -s tests -v
           php -l web/OpenSim_AI/index.php
           php -l deploy/php/ai-translate.php
@@ -102,7 +102,7 @@ jobs:
           mkdir -p dist/linux-x64/knowledge
           cp knowledge/knowledge_cli.py dist/linux-x64/knowledge/
           mkdir -p dist/linux-x64/controller dist/linux-x64/web/OpenSim_AI
-          cp controller/control.py controller/multi_bot.py controller/provider_profiles.py controller/protected_terms.py dist/linux-x64/controller/
+          cp controller/control.py controller/multi_bot.py controller/provider_profiles.py controller/protected_terms.py controller/catalog_models.py controller/catalog_cache.py controller/catalog_probe.py dist/linux-x64/controller/
           cp web/OpenSim_AI/index.php web/OpenSim_AI/.htaccess dist/linux-x64/web/OpenSim_AI/
           cp docs/FILES_PDFS_KNOWLEDGE_FR.md dist/linux-x64/
           cp docs/WEB_INSTALL_V02_FR.md dist/linux-x64/

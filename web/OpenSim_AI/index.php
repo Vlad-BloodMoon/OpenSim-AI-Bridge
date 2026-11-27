@@ -103,7 +103,7 @@ function request_control(string $action, bool $confirm = false, ?array $settings
 $requestedBot = is_string($_POST['botId'] ?? null) ? $_POST['botId'] : (is_string($_GET['bot'] ?? null) ? $_GET['bot'] : 'main');
 $selectedBot = preg_match('/^(main|[0-9a-f]{16})$/D', $requestedBot) ? $requestedBot : 'main';
 $pageRaw = $_POST['page'] ?? $_GET['page'] ?? 'dashboard';
-$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules', 'knowledge'], true) ? $pageRaw : 'dashboard';
+$page = is_string($pageRaw) && in_array($pageRaw, ['dashboard', 'avatars', 'settings', 'maintenance', 'modules', 'knowledge', 'catalog'], true) ? $pageRaw : 'dashboard';
 $now = time();
 if (isset($_SESSION['last_activity']) && $now - (int) $_SESSION['last_activity'] > IDLE_SECONDS) {
     $_SESSION = [];
@@ -159,7 +159,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } else {
         $allowed = ['start', 'stop', 'restart', 'firestorm', 'resume'];
-        if ($action === 'vocabulary_upsert' || $action === 'vocabulary_delete') {
+        if ($action === 'catalog_probe') {
+            $page = 'catalog';
+            $provider = is_string($_POST['catalogProvider'] ?? null) ? $_POST['catalogProvider'] : '';
+            $model = is_string($_POST['catalogModel'] ?? null) ? $_POST['catalogModel'] : '';
+            $apiKey = is_string($_POST['catalogApiKey'] ?? null) ? $_POST['catalogApiKey'] : '';
+            $response = request_control('catalog_probe', false, [
+                'provider' => $provider, 'model' => $model, 'apiKey' => $apiKey
+            ]);
+            unset($apiKey);
+            if (!empty($response['ok']) && !empty($response['result']['success'])) {
+                $message = 'Test réussi : API compatible avec chat/completions ! Aucun modèle activé et aucune clé conservée.';
+            } else {
+                $error = (string)($response['error'] ?? 'Test API échoué.');
+            }
+        } elseif ($action === 'vocabulary_upsert' || $action === 'vocabulary_delete') {
             $page = 'knowledge';
             $term = is_string($_POST['term'] ?? null) ? trim($_POST['term']) : '';
             if ($action === 'vocabulary_upsert') {
@@ -431,6 +445,20 @@ $aiResult = $authenticated && $page === 'modules' ? request_control('get_ai_sett
 $aiSettings = is_array($aiResult['result'] ?? null) ? $aiResult['result'] : null;
 $multiResult = $authenticated && $page === 'modules' ? request_control('get_multi_ai_settings', false, null, $selectedBot) : null;
 $multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
+$addCatalogProvider = is_string($_GET['addProvider'] ?? null) ? $_GET['addProvider'] : '';
+$addCatalogModel = is_string($_GET['addModel'] ?? null) ? $_GET['addModel'] : '';
+$catalogChoice = null;
+$catalogChoiceError = '';
+if ($authenticated && $page === 'modules' && $addCatalogProvider !== '' && $addCatalogModel !== '') {
+    $lookup = request_control('catalog_lookup', false, [
+        'provider' => $addCatalogProvider, 'model' => $addCatalogModel
+    ]);
+    if (!empty($lookup['ok']) && is_array($lookup['result'] ?? null)) {
+        $catalogChoice = $lookup['result'];
+    } else {
+        $catalogChoiceError = 'Modèle indisponible ou non compatible avec le routeur. Aucun profil ajouté.';
+    }
+}
 $avatarAiResult = $authenticated && $page === 'modules' ? request_control('get_avatar_ai_enabled', false, null, $selectedBot) : null;
 $avatarAiEnabled = ($avatarAiResult['result']['enabled'] ?? false) === true;
 $activityResult = $authenticated && $page === 'modules' ? request_control('ai_activity', false, null, $selectedBot) : null;
@@ -440,6 +468,59 @@ foreach ($activityEvents as $activityEvent) {
     if (($activityEvent['outcome'] ?? '') === 'success') {
         $lastAiSuccess = $activityEvent;
         break;
+    }
+}
+$catalogQuery = is_string($_GET['q'] ?? null) ? substr(trim($_GET['q']), 0, 100) : '';
+$catalogProvider = is_string($_GET['provider'] ?? null) ? substr(trim($_GET['provider']), 0, 80) : '';
+$catalogCompatibility = in_array($_GET['compatibility'] ?? 'all', ['all', 'supported', 'other'], true)
+    ? (string)($_GET['compatibility'] ?? 'all') : 'all';
+$catalogSort = in_array($_GET['sort'] ?? 'provider', ['provider', 'model', 'context', 'free', 'compatible'], true)
+    ? (string)($_GET['sort'] ?? 'provider') : 'provider';
+$catalogDirection = ($_GET['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+$catalogPage = max(1, min(1000, (int)($_GET['p'] ?? 1)));
+$catalogLink = static function (string $sort, string $direction, int $pageNumber, ?string $prepare = null) use
+    ($selectedBot, $catalogQuery, $catalogProvider, $catalogCompatibility): string {
+    $params = [
+        'page' => 'catalog', 'bot' => $selectedBot, 'q' => $catalogQuery,
+        'provider' => $catalogProvider, 'compatibility' => $catalogCompatibility,
+        'sort' => $sort, 'direction' => $direction, 'p' => $pageNumber
+    ];
+    if ($prepare !== null) $params['prepare'] = $prepare;
+    return '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+};
+$catalogResponse = $authenticated && $page === 'catalog'
+    ? request_control('catalog_list', false, [
+        'query' => $catalogQuery, 'provider' => $catalogProvider,
+        'compatibility' => $catalogCompatibility,
+        'sort' => $catalogSort, 'direction' => $catalogDirection,
+        'page' => $catalogPage
+    ]) : null;
+$catalog = is_array($catalogResponse['result'] ?? null) ? $catalogResponse['result'] : null;
+$catalogCurrentPage = max(1, (int)($catalog['page'] ?? 1));
+$catalogPages = max(0, (int)($catalog['pages'] ?? 0));
+$catalogPrepare = is_string($_GET['prepare'] ?? null) ? (string)$_GET['prepare'] : '';
+$catalogProbeSelection = is_string($_GET['probe'] ?? null) ? $_GET['probe'] : '';
+$catalogProbeRecord = null;
+$catalogPrepared = null;
+if ($catalogProbeSelection !== '' && strlen($catalogProbeSelection) <= 190 &&
+    is_array($catalog['models'] ?? null)) {
+    foreach ($catalog['models'] as $candidate) {
+        if (!is_array($candidate) || empty($candidate['probeAvailable'])) continue;
+        if (hash_equals((string)($candidate['provider'] ?? '') . '|' .
+                        (string)($candidate['model'] ?? ''), $catalogProbeSelection)) {
+            $catalogProbeRecord = $candidate;
+            break;
+        }
+    }
+}
+if ($catalogPrepare !== '' && strlen($catalogPrepare) <= 190 && is_array($catalog['models'] ?? null)) {
+    foreach ($catalog['models'] as $candidate) {
+        if (!is_array($candidate) || empty($candidate['routerCompatible'])) continue;
+        $identity = (string)($candidate['provider'] ?? '') . '|' . (string)($candidate['model'] ?? '');
+        if (hash_equals($identity, $catalogPrepare)) {
+            $catalogPrepared = $candidate;
+            break;
+        }
     }
 }
 $vocabularyResponse = $authenticated && $page === 'knowledge' ? request_control('vocabulary_list') : null;
@@ -579,7 +660,7 @@ textarea{resize:vertical}
 </section>
 <?php else: ?>
 <nav class="admin-menu" aria-label="Menu principal">
-<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA','knowledge'=>'Base de connaissances'] as $p => $label): ?>
+<?php foreach (['dashboard'=>'Tableau de bord','avatars'=>'Mes avatars','settings'=>'Configuration','maintenance'=>'Maintenance générale','modules'=>'Modules IA','knowledge'=>'Base de connaissances','catalog'=>'Catalogue IA'] as $p => $label): ?>
 <a href="?page=<?= esc($p) ?>&amp;bot=<?= esc($selectedBot) ?>" <?= $page === $p ? 'aria-current="page"' : '' ?>><?= esc($label) ?></a>
 <?php endforeach ?>
 </nav>
@@ -931,7 +1012,122 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php endif ?>
 </section>
 <?php endif ?>
+<?php if ($page === 'catalog'): ?>
+<section class="panel">
+<h2>Catalogue des modèles IA distants</h2>
+<?php if ($catalogProbeRecord !== null): ?>
+<div class="panel">
+<h3>Tester une API compatible OpenAI — <?= esc((string)$catalogProbeRecord['providerName']) ?></h3>
+<p>Modèle : <code><?= esc((string)$catalogProbeRecord['model']) ?></code>. Ce test effectue une véritable requête à l'API du fournisseur et peut consommer du quota ou entraîner des frais selon ton compte. Aucune clé n'est enregistrée et aucun modèle n'est activé.</p>
+<form method="post" autocomplete="off">
+<input type="hidden" name="csrf" value="<?= esc(csrf_token()) ?>">
+<input type="hidden" name="page" value="catalog">
+<input type="hidden" name="botId" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="catalogProvider" value="<?= esc((string)$catalogProbeRecord['provider']) ?>">
+<input type="hidden" name="catalogModel" value="<?= esc((string)$catalogProbeRecord['model']) ?>">
+<label for="catalog-probe-key">Clé API du fournisseur (utilisée uniquement pour ce test)</label>
+<input type="password" id="catalog-probe-key" name="catalogApiKey" maxlength="256" autocomplete="new-password" required>
+<button type="submit" name="action" value="catalog_probe">Lancer le test réel</button>
+</form>
+<p class="muted">Un test réussi prouve seulement que cette API a répondu avec le format attendu. L'intégration au routeur en production nécessite encore une approbation distincte.</p>
+</div>
+<?php endif ?>
+<?php if ($catalogPrepared !== null): ?>
+<div class="notice" role="status">
+<strong>Ajouter ce modèle à mes IA — sans activation automatique</strong>
+<p>Fournisseur : <strong><?= esc((string)$catalogPrepared['providerName']) ?></strong>
+ · Modèle : <code><?= esc((string)$catalogPrepared['model']) ?></code></p>
+<p class="muted">Ce modèle est seulement proposé par un annuaire externe. Sa gratuité et son fonctionnement réel ne sont pas garantis. Vérifie d’abord les conditions officielles du fournisseur. Tu peux préparer son profil désactivé en un clic, sans modifier les réglages existants. Un test réel consomme éventuellement du quota et n’est possible que si les règles du fournisseur le permettent.</p>
+<p><a href="?page=modules&amp;bot=<?= rawurlencode($selectedBot) ?>&amp;addProvider=<?= rawurlencode((string)$catalogPrepared['provider']) ?>&amp;addModel=<?= rawurlencode((string)$catalogPrepared['model']) ?>">Ajouter à mes IA (désactivé)</a></p>
+</div>
+<?php endif ?>
+<p class="muted">Catalogue consultatif de Free-LLM : les informations de gratuité, quotas et compatibilité peuvent changer. Aucun modèle n'est ajouté ou activé automatiquement, aucune clé API n'est transmise au catalogue et aucune donnée de résidents n'est utilisée.</p>
+<?php if ($catalog === null): ?>
+<div class="notice error">Catalogue indisponible : contrôleur V2 non installé ou erreur de lecture.</div>
+<?php elseif (empty($catalog['available'])): ?>
+<p>Le catalogue n'a pas encore été synchronisé. Ton bot continue d'utiliser normalement ses modèles configurés dans Modules IA.</p>
+<?php else: ?>
+<p class="muted">Source : <a href="https://free-llm.com/" rel="noopener noreferrer">Free-LLM</a> — génération UTC <?= esc((string)($catalog['generatedAtUtc'] ?? '—')) ?>. Résultats : <?= (int)($catalog['total'] ?? 0) ?> · Page <?= $catalogCurrentPage ?> / <?= max(1, $catalogPages) ?> · <?= (int)($catalog['pageSize'] ?? 25) ?> fiches par page.</p>
+<?php endif ?>
+<form method="get">
+<input type="hidden" name="page" value="catalog">
+<input type="hidden" name="bot" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="sort" value="<?= esc($catalogSort) ?>">
+<input type="hidden" name="direction" value="<?= esc($catalogDirection) ?>">
+<input type="hidden" name="p" value="1">
+<div class="grid">
+<div><label for="catalog-q">Rechercher un modèle ou fournisseur</label><input id="catalog-q" name="q" maxlength="100" value="<?= esc($catalogQuery) ?>" placeholder="Ex. Groq, Gemini, Qwen"></div>
+<div><label for="catalog-provider">Fournisseur (nom ou identifiant)</label><input id="catalog-provider" name="provider" maxlength="80" value="<?= esc($catalogProvider) ?>" placeholder="Ex. groq"></div>
+<div><label for="catalog-compatibility">Compatibilité du routeur</label>
+<select id="catalog-compatibility" name="compatibility">
+<option value="all" <?= $catalogCompatibility === 'all' ? 'selected' : '' ?>>Tous</option>
+<option value="supported" <?= $catalogCompatibility === 'supported' ? 'selected' : '' ?>>Fournisseurs connus</option>
+<option value="other" <?= $catalogCompatibility === 'other' ? 'selected' : '' ?>>Adaptateur non disponible</option>
+</select></div>
+</div>
+<button type="submit">Rechercher dans le catalogue</button>
+</form>
+<?php if (!empty($catalog['available']) && !empty($catalog['models'])): ?>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;text-align:left">
+<thead><tr>
+<?php foreach ([
+    'provider' => 'Fournisseur', 'model' => 'Modèle', 'context' => 'Contexte',
+    'free' => 'Gratuité annoncée', 'compatible' => 'Routeur V1'
+] as $sortField => $sortLabel):
+    $nextDirection = ($catalogSort === $sortField && $catalogDirection === 'asc') ? 'desc' : 'asc';
+    $sortIndicator = $catalogSort === $sortField ? ($catalogDirection === 'asc' ? ' ▲' : ' ▼') : ' ↕';
+?>
+<th><a href="<?= esc($catalogLink($sortField, $nextDirection, 1)) ?>"
+    aria-label="Trier par <?= esc($sortLabel) ?>" style="white-space:nowrap"><?= esc($sortLabel . $sortIndicator) ?></a></th>
+<?php endforeach ?>
+<th>Source</th><th>Préparer</th><th>Test API</th></tr></thead>
+<tbody>
+<?php foreach ($catalog['models'] as $model): ?>
+<tr style="border-top:1px solid #36415e">
+<td style="padding:.4rem"><?= esc((string)($model['providerName'] ?? '')) ?></td>
+<td style="padding:.4rem"><?= esc((string)($model['modelName'] ?? '')) ?><small style="display:block"><?= esc((string)($model['model'] ?? '')) ?></small></td>
+<td style="padding:.4rem"><?= isset($model['contextTokens']) ? (int)$model['contextTokens'] : '—' ?></td>
+<td style="padding:.4rem"><?= esc((string)($model['freeTierClaim'] ?? 'inconnu')) ?> <small>(non vérifiée)</small></td>
+<td style="padding:.4rem"><?= !empty($model['routerCompatible']) ? 'Fournisseur connu — modèle à vérifier' : 'Non disponible' ?></td>
+<td style="padding:.4rem"><?php $modelUrl = (string)($model['sourceUrl'] ?? ''); ?><?php if (str_starts_with($modelUrl, 'https://free-llm.com/')): ?><a href="<?= esc($modelUrl) ?>" rel="noopener noreferrer">Fiche</a><?php else: ?>—<?php endif ?></td>
+<td style="padding:.4rem"><?php if (!empty($model['routerCompatible'])): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage, (string)$model['provider'] . '|' . (string)$model['model'])) ?>">Préparer</a>
+<?php else: ?>—<?php endif ?></td>
+<td style="padding:.4rem"><?php if (!empty($model['probeAvailable'])): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage)) ?>&amp;probe=<?= rawurlencode((string)$model['provider'] . '|' . (string)$model['model']) ?>">Tester l’API</a>
+<?php else: ?>—<?php endif ?></td>
+</tr>
+<?php endforeach ?>
+</tbody></table></div>
+<?php if ($catalogPages > 1): ?>
+<nav aria-label="Pages du catalogue" class="actions" style="margin-top:1rem;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
+<?php if ($catalogCurrentPage > 1): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage - 1)) ?>">← Précédente</a>
+<?php endif ?>
+<?php for ($pageNumber = 1; $pageNumber <= $catalogPages; ++$pageNumber): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $pageNumber)) ?>"
+    <?= $pageNumber === $catalogCurrentPage ? 'aria-current="page"' : '' ?>
+    style="padding:.25rem .55rem;<?= $pageNumber === $catalogCurrentPage ? 'font-weight:bold;text-decoration:underline' : '' ?>"><?= $pageNumber ?></a>
+<?php endfor ?>
+<?php if ($catalogCurrentPage < $catalogPages): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage + 1)) ?>">Suivante →</a>
+<?php endif ?>
+</nav>
+<?php endif ?>
+<?php elseif (!empty($catalog['available'])): ?>
+<p class="muted">Aucun modèle correspondant à la recherche.</p>
+<?php endif ?>
+</section>
+<?php endif ?>
 <?php if ($page === 'modules'): ?>
+<style>
+.ai-fold { margin-top: .7rem; }
+.ai-fold > summary { cursor: pointer; padding: .75rem .85rem; border: 1px solid #36415e; border-radius: .65rem; font-weight: 600; }
+.ai-fold > summary:hover, .ai-fold[open] > summary { background: rgba(110,145,255,.12); }
+.ai-fold[open] > summary { margin-bottom: 1rem; }
+.ai-global-fold > summary { font-size: 1.05rem; }
+</style>
 <section class="panel">
 <h2>Activité des modèles IA — <?= esc($selectedName) ?></h2>
 <p class="muted">Historique des 50 derniers événements connus de cet avatar, sans questions, réponses ni clés API. Recharge cette page après un IM pour voir le fournisseur réellement utilisé. Les horaires sont affichés en heure de Paris (été/hiver automatique). Les pauses indiquées correspondent aux décisions enregistrées, pas à une vérification en direct de la disponibilité du fournisseur.</p>
@@ -944,6 +1140,8 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <p class="muted">Aucune réponse enregistrée pour cet avatar. Les événements apparaîtront après le déploiement du nouveau bot et de sa première réponse IA.</p>
 <?php endif ?>
 <?php if ($activityEvents): ?>
+<details class="ai-fold">
+<summary>Consulter l’historique détaillé (<?= count($activityEvents) ?> événements)</summary>
 <div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;text-align:left">
 <thead><tr><th>Date (Paris)</th><th>Fournisseur</th><th>Modèle</th><th>Résultat</th><th>Durée API</th><th>Motif</th><th>Pause enregistrée jusqu’à (Paris)</th></tr></thead>
@@ -989,6 +1187,7 @@ foreach ($activityEvents as $activityEvent):
 </tr>
 <?php endforeach ?>
 </tbody></table></div>
+</details>
 <?php endif ?>
 </section>
 <section class="panel">
@@ -1003,7 +1202,8 @@ foreach ($activityEvents as $activityEvent):
 </form>
 </section>
 <section class="panel">
-<h2>Configuration multi-IA globale</h2>
+<details class="ai-fold ai-global-fold"<?= $catalogChoice !== null ? ' open' : '' ?>>
+<summary><strong>Configuration multi-IA globale</strong> — <?= !empty($multiSettings['enabled']) ? 'Activée' : 'Désactivée' ?> · <?= esc((string)($multiSettings['mode'] ?? 'auto')) ?></summary>
 <p class="muted">Une chaîne de moteurs IA distants, ordonnée par priorité. Le premier moteur actif et testé est utilisé ; le mode multi-IA tente le suivant si le précédent est indisponible ou limité. Tous les résidents peuvent dialoguer en IM avec cet avatar lorsqu'au moins un moteur public approuvé est activé.</p>
 <?php if ($multiSettings === null): ?>
 <div class="notice error">Paramètres multi-IA indisponibles : contrôleur à mettre à jour.</div>
@@ -1030,6 +1230,17 @@ foreach (['OpenRouter' => 'openrouter/free', 'Gemini' => 'gemini-3.5-flash-lite'
 </select>
 </fieldset>
 <h3>Priorité et configuration des moteurs</h3>
+<?php if ($catalogChoiceError !== ''): ?>
+<div class="notice error"><?= esc($catalogChoiceError) ?></div>
+<?php elseif ($catalogChoice !== null): ?>
+<div class="notice" role="status">
+<strong>Modèle sélectionné : <?= esc((string)$catalogChoice['modelName']) ?></strong>
+<p>Le nouveau moteur est prérempli, mais <strong>désactivé</strong> et non testé. Vérifie sa gratuité, sa clé API et ses conditions d’utilisation. Enregistre d’abord la configuration, puis utilise « Tester le modèle enregistré ». L’activation est une décision séparée.</p>
+<?php if (empty($catalogChoice['publicEligible'])): ?>
+<p><strong>Attention :</strong> ce modèle ne satisfait pas actuellement nos règles de gratuité pour le routage public. Tu peux le préparer, mais pas l’approuver pour le routage public.</p>
+<?php endif ?>
+</div>
+<?php endif ?>
 <p class="muted">Utilise ↑ et ↓ pour changer leur ordre. Les moteurs non testés ne sont jamais utilisés. Enregistre d'abord un nouveau modèle ou une nouvelle clé, puis clique sur « Tester ». Un test réel consomme une requête API et peut être facturé si tu as activé la facturation chez le fournisseur.</p>
 <div style="display:flex;justify-content:flex-end;margin:.6rem 0">
 <button type="button" class="secondary" id="ai-add-profile">+ Ajouter un moteur</button>
@@ -1079,6 +1290,7 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
 <button name="action" value="save_multi_ai_settings">Enregistrer la configuration multi-IA</button>
 </form>
 <?php endif ?>
+</details>
 </section>
 <script nonce="<?= esc($scriptNonce) ?>">
 (function () {
@@ -1157,6 +1369,30 @@ placeholder="<?= !empty($entry['hasKey']) ? 'Laisser vide pour conserver la clé
     }
   });
   renumber();
+<?php if ($catalogChoice !== null): ?>
+  // Selection verified server-side against the cached catalog. No persistence
+  // until the administrator explicitly saves; no test or activation performed.
+  var selectedProvider = <?= json_encode((string)$catalogChoice['provider'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+  var selectedModel = <?= json_encode((string)$catalogChoice['model'], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE) ?>;
+  var existing = Array.from(list.querySelectorAll('.ai-profile')).find(function (card) {
+    return card.querySelector('[data-field="provider"]').value === selectedProvider &&
+           card.querySelector('[data-field="model"]').value === selectedModel;
+  });
+  if (existing) {
+    existing.scrollIntoView({block:'center', behavior:'smooth'});
+  } else if (list.querySelectorAll('.ai-profile').length < 16) {
+    add.click();
+    var created = list.querySelector('.ai-profile:last-child');
+    created.querySelector('[data-field="provider"]').value = selectedProvider;
+    created.querySelector('[data-field="model"]').value = selectedModel;
+    created.querySelector('[data-field="enabled"]').checked = false;
+    created.querySelector('.ai-rank').textContent =
+      list.querySelectorAll('.ai-profile').length + '. ' + selectedProvider;
+    created.scrollIntoView({block:'center', behavior:'smooth'});
+  } else {
+    alert('16 profils présents : retire un profil inutile avant tout ajout.');
+  }
+<?php endif ?>
 }());
 </script>
 <?php endif ?>

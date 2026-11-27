@@ -1,0 +1,11 @@
+[Unit]
+Description=Optional daily remote AI model catalog refresh (never used by IM routing)
+
+[Timer]
+OnCalendar=*-*-* 04:15:00
+RandomizedDelaySec=20m
+Persistent=true
+Unit=opensim-ai-bridge-catalog.service
+
+[Install]
+WantedBy=timers.target

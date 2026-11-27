@@ -24,9 +24,12 @@ import time
 import multi_bot
 import provider_profiles
 import protected_terms
+import catalog_cache
+import catalog_models
+import catalog_probe
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list", "catalog_lookup", "catalog_probe"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -762,9 +765,144 @@ def knowledge_local_refresh(install):
     return {"started": True}
 
 
+CATALOG_PAGE_SIZE = 25
+CATALOG_SORTS = frozenset(("provider", "model", "context", "free", "compatible"))
+
+
+def catalog_list(filters=None):
+    """Read-only paginated catalog: filter and sort before slicing."""
+    filters = filters if isinstance(filters, dict) else {}
+    if set(filters) - {"query", "provider", "compatibility", "page", "sort", "direction"}:
+        raise ControlError("Invalid catalog search")
+    query = filters.get("query", "")
+    provider = filters.get("provider", "")
+    compatibility = filters.get("compatibility", "all")
+    page = filters.get("page", 1)
+    sort = filters.get("sort", "provider")
+    direction = filters.get("direction", "asc")
+    if (not isinstance(query, str) or len(query) > 100
+        or not isinstance(provider, str) or len(provider) > 80
+        or compatibility not in ("all", "supported", "other")
+        or type(page) is not int or not 1 <= page <= 1000
+        or sort not in CATALOG_SORTS or direction not in ("asc", "desc")):
+        raise ControlError("Invalid catalog filters")
+    try:
+        snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+    except (catalog_cache.CatalogError, OSError):
+        snapshot = None
+    if snapshot is None:
+        return {"available": False, "models": [], "total": 0,
+                "page": 1, "pages": 0, "pageSize": CATALOG_PAGE_SIZE,
+                "sort": sort, "direction": direction, "generatedAtUtc": None}
+    matched = []
+    query = query.casefold().strip()
+    provider = provider.casefold().strip()
+    for record in snapshot["models"][:3000]:
+        if not isinstance(record, dict):
+            continue
+        provider_text = catalog_models.catalog_provider_search_text(
+            record.get("provider"), record.get("providerName"))
+        if provider and provider not in provider_text.casefold():
+            continue
+        supported = catalog_models.adapter_for_slug(record.get("provider")) is not None
+        if compatibility == "supported" and not supported:
+            continue
+        if compatibility == "other" and supported:
+            continue
+        searchable = (" ".join(str(record.get(k, "")) for k in
+                ("providerName", "provider", "model", "modelName")) + " " +
+                provider_text).casefold()
+        if query and query not in searchable:
+            continue
+        matched.append({
+            "provider": str(record.get("provider", ""))[:80],
+            "providerName": str(record.get("providerName", ""))[:120],
+            "model": str(record.get("model", ""))[:100],
+            "modelName": str(record.get("modelName", ""))[:150],
+            "sourceUrl": str(record.get("sourceUrl", ""))[:500],
+            "freeTierClaim": str(record.get("freeTierClaim", "unknown"))[:40],
+            "routerCompatible": supported,
+            "contextTokens": record.get("contextTokens")
+                if type(record.get("contextTokens")) is int else None,
+            "vision": record.get("vision") is True,
+            "probeAvailable": catalog_probe.available(str(record.get("provider", ""))),
+        })
+    # Total ordering avoids duplicates/omissions between adjacent pages.
+    def key(record):
+        provider_name = record["providerName"].casefold()
+        model_name = record["modelName"].casefold()
+        tie = (provider_name, record["provider"].casefold(),
+               model_name, record["model"].casefold())
+        if sort == "model":
+            return (model_name, record["model"].casefold(), *tie)
+        if sort == "context":
+            return (record["contextTokens"] is None,
+                    record["contextTokens"] or 0, *tie)
+        if sort == "free":
+            return (record["freeTierClaim"].casefold(), *tie)
+        if sort == "compatible":
+            return (not record["routerCompatible"], *tie)
+        return tie
+
+    matched.sort(key=key, reverse=direction == "desc")
+    total = len(matched)
+    pages = (total + CATALOG_PAGE_SIZE - 1) // CATALOG_PAGE_SIZE
+    page = min(page, max(1, pages))
+    start = (page - 1) * CATALOG_PAGE_SIZE
+    return {"available": True, "models": matched[start:start + CATALOG_PAGE_SIZE],
+            "total": total, "page": page, "pages": pages,
+            "pageSize": CATALOG_PAGE_SIZE, "sort": sort,
+            "direction": direction,
+            "generatedAtUtc": str(snapshot.get("generatedAtUtc", ""))[:64]}
+
+
+
+
+def catalog_lookup(values):
+    """Resolve a catalog selection on the server, without creating a profile."""
+    if (not isinstance(values, dict) or set(values) != {"provider", "model"}
+        or not isinstance(values["provider"], str)
+        or not isinstance(values["model"], str)):
+        raise ControlError("Invalid catalog selection")
+    provider, model = values["provider"], values["model"]
+    adapter = catalog_models.adapter_for_slug(provider)
+    if adapter is None or not re.fullmatch(r"[A-Za-z0-9._:/-]{1,100}", model):
+        raise ControlError("No supported route for selected model")
+    try:
+        snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+    except (catalog_cache.CatalogError, OSError):
+        snapshot = None
+    if not isinstance(snapshot, dict):
+        raise ControlError("Catalog unavailable")
+    for record in snapshot.get("models", [])[:3000]:
+        if not isinstance(record, dict):
+            continue
+        if record.get("provider") == provider and record.get("model") == model:
+            return {"provider": adapter, "model": model,
+                    "modelName": str(record.get("modelName", ""))[:150],
+                    "publicEligible": provider_profiles.public_eligible(adapter, model),
+                    "configured": False, "enabled": False}
+    raise ControlError("Model no longer in the imported catalog")
+
+
+
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
     if command not in COMMANDS:
         raise ControlError("Unsupported command")
+
+    if command == "catalog_list":
+        return catalog_list(settings)
+    if command == "catalog_lookup":
+        return catalog_lookup(settings)
+    if command == "catalog_probe":
+        if not isinstance(settings, dict) or set(settings) != {"provider", "model", "apiKey"}:
+            raise ControlError("Invalid catalog test request")
+        try:
+            snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+            return catalog_probe.probe(settings["provider"], settings["model"],
+                                       settings["apiKey"], snapshot)
+        except (catalog_probe.ProbeError, catalog_cache.CatalogError) as exc:
+            raise ControlError(str(exc)) from None
 
     if command == "test_multi_ai_profile":
         return test_multi_ai_profile(install, settings)
