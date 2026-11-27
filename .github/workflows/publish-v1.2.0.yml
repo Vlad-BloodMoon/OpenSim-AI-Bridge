@@ -66,7 +66,7 @@ jobs:
           
           Code source V1 : commit 25ca6d8ad005825970eb3638026cf65ebfcb90ca.
           Build GitHub Actions validé : https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/actions/runs/46007418008
-RELEASE_NOTES
+          RELEASE_NOTES
           gh release create v1.2.0 \
             OpenSim-AI-Bridge-v1.2.0-linux-x64.zip SHA256SUMS \
             --repo "${{ github.repository }}" \
