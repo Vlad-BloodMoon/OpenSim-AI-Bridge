@@ -446,12 +446,30 @@ $catalogQuery = is_string($_GET['q'] ?? null) ? substr(trim($_GET['q']), 0, 100)
 $catalogProvider = is_string($_GET['provider'] ?? null) ? substr(trim($_GET['provider']), 0, 80) : '';
 $catalogCompatibility = in_array($_GET['compatibility'] ?? 'all', ['all', 'supported', 'other'], true)
     ? (string)($_GET['compatibility'] ?? 'all') : 'all';
+$catalogSort = in_array($_GET['sort'] ?? 'provider', ['provider', 'model', 'context', 'free', 'compatible'], true)
+    ? (string)($_GET['sort'] ?? 'provider') : 'provider';
+$catalogDirection = ($_GET['direction'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+$catalogPage = max(1, min(1000, (int)($_GET['p'] ?? 1)));
+$catalogLink = static function (string $sort, string $direction, int $pageNumber, ?string $prepare = null) use
+    ($selectedBot, $catalogQuery, $catalogProvider, $catalogCompatibility): string {
+    $params = [
+        'page' => 'catalog', 'bot' => $selectedBot, 'q' => $catalogQuery,
+        'provider' => $catalogProvider, 'compatibility' => $catalogCompatibility,
+        'sort' => $sort, 'direction' => $direction, 'p' => $pageNumber
+    ];
+    if ($prepare !== null) $params['prepare'] = $prepare;
+    return '?' . http_build_query($params, '', '&', PHP_QUERY_RFC3986);
+};
 $catalogResponse = $authenticated && $page === 'catalog'
     ? request_control('catalog_list', false, [
         'query' => $catalogQuery, 'provider' => $catalogProvider,
-        'compatibility' => $catalogCompatibility
+        'compatibility' => $catalogCompatibility,
+        'sort' => $catalogSort, 'direction' => $catalogDirection,
+        'page' => $catalogPage
     ]) : null;
 $catalog = is_array($catalogResponse['result'] ?? null) ? $catalogResponse['result'] : null;
+$catalogCurrentPage = max(1, (int)($catalog['page'] ?? 1));
+$catalogPages = max(0, (int)($catalog['pages'] ?? 0));
 $catalogPrepare = is_string($_GET['prepare'] ?? null) ? (string)$_GET['prepare'] : '';
 $catalogPrepared = null;
 if ($catalogPrepare !== '' && strlen($catalogPrepare) <= 190 && is_array($catalog['models'] ?? null)) {
@@ -970,11 +988,14 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php elseif (empty($catalog['available'])): ?>
 <p>Le catalogue n'a pas encore été synchronisé. Ton bot continue d'utiliser normalement ses modèles configurés dans Modules IA.</p>
 <?php else: ?>
-<p class="muted">Source : <a href="https://free-llm.com/" rel="noopener noreferrer">Free-LLM</a> — génération UTC <?= esc((string)($catalog['generatedAtUtc'] ?? '—')) ?>. Résultats : <?= (int)($catalog['total'] ?? 0) ?>, maximum 30 affichés.</p>
+<p class="muted">Source : <a href="https://free-llm.com/" rel="noopener noreferrer">Free-LLM</a> — génération UTC <?= esc((string)($catalog['generatedAtUtc'] ?? '—')) ?>. Résultats : <?= (int)($catalog['total'] ?? 0) ?> · Page <?= $catalogCurrentPage ?> / <?= max(1, $catalogPages) ?> · <?= (int)($catalog['pageSize'] ?? 25) ?> fiches par page.</p>
 <?php endif ?>
 <form method="get">
 <input type="hidden" name="page" value="catalog">
 <input type="hidden" name="bot" value="<?= esc($selectedBot) ?>">
+<input type="hidden" name="sort" value="<?= esc($catalogSort) ?>">
+<input type="hidden" name="direction" value="<?= esc($catalogDirection) ?>">
+<input type="hidden" name="p" value="1">
 <div class="grid">
 <div><label for="catalog-q">Rechercher un modèle ou fournisseur</label><input id="catalog-q" name="q" maxlength="100" value="<?= esc($catalogQuery) ?>" placeholder="Ex. Groq, Gemini, Qwen"></div>
 <div><label for="catalog-provider">Fournisseur (identifiant exact)</label><input id="catalog-provider" name="provider" maxlength="80" value="<?= esc($catalogProvider) ?>" placeholder="Ex. groq"></div>
@@ -990,7 +1011,18 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php if (!empty($catalog['available']) && !empty($catalog['models'])): ?>
 <div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;text-align:left">
-<thead><tr><th>Fournisseur</th><th>Modèle</th><th>Contexte</th><th>Gratuité annoncée</th><th>Routeur V1</th><th>Source</th><th>Préparer</th></tr></thead>
+<thead><tr>
+<?php foreach ([
+    'provider' => 'Fournisseur', 'model' => 'Modèle', 'context' => 'Contexte',
+    'free' => 'Gratuité annoncée', 'compatible' => 'Routeur V1'
+] as $sortField => $sortLabel):
+    $nextDirection = ($catalogSort === $sortField && $catalogDirection === 'asc') ? 'desc' : 'asc';
+    $sortIndicator = $catalogSort === $sortField ? ($catalogDirection === 'asc' ? ' ▲' : ' ▼') : ' ↕';
+?>
+<th><a href="<?= esc($catalogLink($sortField, $nextDirection, 1)) ?>"
+    aria-label="Trier par <?= esc($sortLabel) ?>" style="white-space:nowrap"><?= esc($sortLabel . $sortIndicator) ?></a></th>
+<?php endforeach ?>
+<th>Source</th><th>Préparer</th></tr></thead>
 <tbody>
 <?php foreach ($catalog['models'] as $model): ?>
 <tr style="border-top:1px solid #36415e">
@@ -1001,11 +1033,26 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <td style="padding:.4rem"><?= !empty($model['routerCompatible']) ? 'Fournisseur connu — modèle à vérifier' : 'Non disponible' ?></td>
 <td style="padding:.4rem"><?php $modelUrl = (string)($model['sourceUrl'] ?? ''); ?><?php if (str_starts_with($modelUrl, 'https://free-llm.com/')): ?><a href="<?= esc($modelUrl) ?>" rel="noopener noreferrer">Fiche</a><?php else: ?>—<?php endif ?></td>
 <td style="padding:.4rem"><?php if (!empty($model['routerCompatible'])): ?>
-<a href="?page=catalog&amp;bot=<?= rawurlencode($selectedBot) ?>&amp;q=<?= rawurlencode($catalogQuery) ?>&amp;provider=<?= rawurlencode($catalogProvider) ?>&amp;compatibility=<?= rawurlencode($catalogCompatibility) ?>&amp;prepare=<?= rawurlencode((string)$model['provider'] . '|' . (string)$model['model']) ?>">Préparer</a>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage, (string)$model['provider'] . '|' . (string)$model['model'])) ?>">Préparer</a>
 <?php else: ?>—<?php endif ?></td>
 </tr>
 <?php endforeach ?>
 </tbody></table></div>
+<?php if ($catalogPages > 1): ?>
+<nav aria-label="Pages du catalogue" class="actions" style="margin-top:1rem;display:flex;align-items:center;flex-wrap:wrap;gap:.5rem">
+<?php if ($catalogCurrentPage > 1): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage - 1)) ?>">← Précédente</a>
+<?php endif ?>
+<?php for ($pageNumber = 1; $pageNumber <= $catalogPages; ++$pageNumber): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $pageNumber)) ?>"
+    <?= $pageNumber === $catalogCurrentPage ? 'aria-current="page"' : '' ?>
+    style="padding:.25rem .55rem;<?= $pageNumber === $catalogCurrentPage ? 'font-weight:bold;text-decoration:underline' : '' ?>"><?= $pageNumber ?></a>
+<?php endfor ?>
+<?php if ($catalogCurrentPage < $catalogPages): ?>
+<a href="<?= esc($catalogLink($catalogSort, $catalogDirection, $catalogCurrentPage + 1)) ?>">Suivante →</a>
+<?php endif ?>
+</nav>
+<?php endif ?>
 <?php elseif (!empty($catalog['available'])): ?>
 <p class="muted">Aucun modèle correspondant à la recherche.</p>
 <?php endif ?>
