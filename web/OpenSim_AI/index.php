@@ -452,6 +452,18 @@ $catalogResponse = $authenticated && $page === 'catalog'
         'compatibility' => $catalogCompatibility
     ]) : null;
 $catalog = is_array($catalogResponse['result'] ?? null) ? $catalogResponse['result'] : null;
+$catalogPrepare = is_string($_GET['prepare'] ?? null) ? (string)$_GET['prepare'] : '';
+$catalogPrepared = null;
+if ($catalogPrepare !== '' && strlen($catalogPrepare) <= 190 && is_array($catalog['models'] ?? null)) {
+    foreach ($catalog['models'] as $candidate) {
+        if (!is_array($candidate) || empty($candidate['routerCompatible'])) continue;
+        $identity = (string)($candidate['provider'] ?? '') . '|' . (string)($candidate['model'] ?? '');
+        if (hash_equals($identity, $catalogPrepare)) {
+            $catalogPrepared = $candidate;
+            break;
+        }
+    }
+}
 $vocabularyResponse = $authenticated && $page === 'knowledge' ? request_control('vocabulary_list') : null;
 $vocabulary = is_array($vocabularyResponse['result']['entries'] ?? null)
     ? $vocabularyResponse['result']['entries'] : null;
@@ -944,6 +956,14 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php if ($page === 'catalog'): ?>
 <section class="panel">
 <h2>Catalogue des modèles IA distants</h2>
+<?php if ($catalogPrepared !== null): ?>
+<div class="notice" role="status">
+<strong>Préparation du profil — aucune activation effectuée</strong>
+<p>Fournisseur : <strong><?= esc((string)$catalogPrepared['providerName']) ?></strong>
+ · Modèle : <code><?= esc((string)$catalogPrepared['model']) ?></code></p>
+<p class="muted">Ce modèle est seulement proposé par un annuaire externe. Sa gratuité et son fonctionnement réel ne sont pas garantis. Vérifie d’abord les conditions officielles du fournisseur. Ensuite, dans <a href="?page=modules&amp;bot=<?= esc($selectedBot) ?>">Modules IA</a>, ajoute un moteur avec cet identifiant, en le laissant <strong>désactivé</strong>. L’activation publique exige toujours une clé autorisée et un test explicite.</p>
+</div>
+<?php endif ?>
 <p class="muted">Catalogue consultatif de Free-LLM : les informations de gratuité, quotas et compatibilité peuvent changer. Aucun modèle n'est ajouté ou activé automatiquement, aucune clé API n'est transmise au catalogue et aucune donnée de résidents n'est utilisée.</p>
 <?php if ($catalog === null): ?>
 <div class="notice error">Catalogue indisponible : contrôleur V2 non installé ou erreur de lecture.</div>
@@ -970,7 +990,7 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <?php if (!empty($catalog['available']) && !empty($catalog['models'])): ?>
 <div style="overflow-x:auto">
 <table style="width:100%;border-collapse:collapse;text-align:left">
-<thead><tr><th>Fournisseur</th><th>Modèle</th><th>Contexte</th><th>Gratuité annoncée</th><th>Routeur V1</th><th>Source</th></tr></thead>
+<thead><tr><th>Fournisseur</th><th>Modèle</th><th>Contexte</th><th>Gratuité annoncée</th><th>Routeur V1</th><th>Source</th><th>Préparer</th></tr></thead>
 <tbody>
 <?php foreach ($catalog['models'] as $model): ?>
 <tr style="border-top:1px solid #36415e">
@@ -980,6 +1000,9 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 <td style="padding:.4rem"><?= esc((string)($model['freeTierClaim'] ?? 'inconnu')) ?> <small>(non vérifiée)</small></td>
 <td style="padding:.4rem"><?= !empty($model['routerCompatible']) ? 'Fournisseur connu — modèle à vérifier' : 'Non disponible' ?></td>
 <td style="padding:.4rem"><?php $modelUrl = (string)($model['sourceUrl'] ?? ''); ?><?php if (str_starts_with($modelUrl, 'https://free-llm.com/')): ?><a href="<?= esc($modelUrl) ?>" rel="noopener noreferrer">Fiche</a><?php else: ?>—<?php endif ?></td>
+<td style="padding:.4rem"><?php if (!empty($model['routerCompatible'])): ?>
+<a href="?page=catalog&amp;bot=<?= rawurlencode($selectedBot) ?>&amp;q=<?= rawurlencode($catalogQuery) ?>&amp;provider=<?= rawurlencode($catalogProvider) ?>&amp;compatibility=<?= rawurlencode($catalogCompatibility) ?>&amp;prepare=<?= rawurlencode((string)$model['provider'] . '|' . (string)$model['model']) ?>">Préparer</a>
+<?php else: ?>—<?php endif ?></td>
 </tr>
 <?php endforeach ?>
 </tbody></table></div>
