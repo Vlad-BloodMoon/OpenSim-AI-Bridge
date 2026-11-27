@@ -26,9 +26,10 @@ import provider_profiles
 import protected_terms
 import catalog_cache
 import catalog_models
+import catalog_probe
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list", "catalog_lookup"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity", "catalog_list", "catalog_lookup", "catalog_probe"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -824,6 +825,7 @@ def catalog_list(filters=None):
             "contextTokens": record.get("contextTokens")
                 if type(record.get("contextTokens")) is int else None,
             "vision": record.get("vision") is True,
+            "probeAvailable": catalog_probe.available(str(record.get("provider", ""))),
         })
     # Total ordering avoids duplicates/omissions between adjacent pages.
     def key(record):
@@ -892,6 +894,15 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
         return catalog_list(settings)
     if command == "catalog_lookup":
         return catalog_lookup(settings)
+    if command == "catalog_probe":
+        if not isinstance(settings, dict) or set(settings) != {"provider", "model", "apiKey"}:
+            raise ControlError("Invalid catalog test request")
+        try:
+            snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
+            return catalog_probe.probe(settings["provider"], settings["model"],
+                                       settings["apiKey"], snapshot)
+        except (catalog_probe.ProbeError, catalog_cache.CatalogError) as exc:
+            raise ControlError(str(exc)) from None
 
     if command == "test_multi_ai_profile":
         return test_multi_ai_profile(install, settings)
