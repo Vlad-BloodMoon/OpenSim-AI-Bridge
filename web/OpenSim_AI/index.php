@@ -420,6 +420,15 @@ $multiResult = $authenticated && $page === 'modules' ? request_control('get_mult
 $multiSettings = is_array($multiResult['result'] ?? null) ? $multiResult['result'] : null;
 $avatarAiResult = $authenticated && $page === 'modules' ? request_control('get_avatar_ai_enabled', false, null, $selectedBot) : null;
 $avatarAiEnabled = ($avatarAiResult['result']['enabled'] ?? false) === true;
+$activityResult = $authenticated && $page === 'modules' ? request_control('ai_activity', false, null, $selectedBot) : null;
+$activityEvents = is_array($activityResult['result']['events'] ?? null) ? $activityResult['result']['events'] : [];
+$lastAiSuccess = null;
+foreach ($activityEvents as $activityEvent) {
+    if (($activityEvent['outcome'] ?? '') === 'success') {
+        $lastAiSuccess = $activityEvent;
+        break;
+    }
+}
 $vocabularyResponse = $authenticated && $page === 'knowledge' ? request_control('vocabulary_list') : null;
 $vocabulary = is_array($vocabularyResponse['result']['entries'] ?? null)
     ? $vocabularyResponse['result']['entries'] : null;
@@ -910,6 +919,43 @@ echo esc(in_array($localState, ['active', 'activating'], true)
 </section>
 <?php endif ?>
 <?php if ($page === 'modules'): ?>
+<section class="panel">
+<h2>Activité des modèles IA — <?= esc($selectedName) ?></h2>
+<p class="muted">Historique des 50 derniers événements connus de cet avatar, sans questions, réponses ni clés API. Recharge cette page après un IM pour voir le fournisseur réellement utilisé. Les horodatages sont en UTC.</p>
+<?php if ($lastAiSuccess !== null): ?>
+<p><strong>Dernière réponse :</strong> <?= esc((string)$lastAiSuccess['provider']) ?> / <?= esc((string)$lastAiSuccess['model']) ?>
+· <?= esc((string)$lastAiSuccess['utc']) ?>
+<?= !empty($lastAiSuccess['switched']) ? ' · 🔄 Basculement réussi' : ' · Réponse directe' ?></p>
+<?php else: ?>
+<p class="muted">Aucune réponse enregistrée pour cet avatar. Les événements apparaîtront après le déploiement du nouveau bot et de sa première réponse IA.</p>
+<?php endif ?>
+<?php if ($activityEvents): ?>
+<div style="overflow-x:auto">
+<table style="width:100%;border-collapse:collapse;text-align:left">
+<thead><tr><th>Date UTC</th><th>Fournisseur</th><th>Modèle</th><th>Résultat</th></tr></thead>
+<tbody>
+<?php
+$activityLabels = [
+    'success' => '✅ Réponse',
+    'http_error' => '⚠️ Erreur HTTP',
+    'local_quota' => '⏳ Quota local atteint',
+    'cooldown' => '⏳ Modèle en pause',
+    'not_configured' => '— Clé indisponible',
+    'empty_reply' => '⚠️ Réponse vide',
+    'transport_error' => '⚠️ Erreur réseau'
+];
+foreach ($activityEvents as $activityEvent):
+?>
+<tr style="border-top:1px solid #36415e">
+<td style="padding:.4rem"><?= esc((string)$activityEvent['utc']) ?></td>
+<td style="padding:.4rem"><?= esc((string)$activityEvent['provider']) ?></td>
+<td style="padding:.4rem"><?= esc((string)$activityEvent['model']) ?></td>
+<td style="padding:.4rem"><?= esc($activityLabels[$activityEvent['outcome']] ?? 'Inconnu') ?><?= isset($activityEvent['httpStatus']) && $activityEvent['httpStatus'] !== null ? ' (' . (int)$activityEvent['httpStatus'] . ')' : '' ?><?= !empty($activityEvent['switched']) ? ' · 🔄 Basculement' : '' ?></td>
+</tr>
+<?php endforeach ?>
+</tbody></table></div>
+<?php endif ?>
+</section>
 <section class="panel">
 <h2>IA de <?= esc($selectedName) ?></h2>
 <p class="muted">Tous les avatars utilisent exactement les mêmes fournisseurs, modèles, priorités et clés API. Seule l'activation de l'IA est propre à cet avatar.</p>
