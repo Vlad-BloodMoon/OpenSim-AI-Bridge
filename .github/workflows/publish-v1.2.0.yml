@@ -45,27 +45,27 @@ jobs:
         run: |
           set -euo pipefail
           cat > RELEASE_NOTES.md <<'RELEASE_NOTES'
-# OpenSim AI Bridge v1.2.0 — Routeur IA V1 stabilisé
-
-Cette version correspond à la V1 du routeur IA intelligent, fusionnée par la PR #5 le 27 novembre 2026. Elle est utilisée sur BloodMoon AI (OpenSimulator) avec réponses IM normales confirmées en production.
-
-## Améliorations
-- Basculement automatique fiable entre les fournisseurs distants configurés et approuvés (Groq, OpenRouter, Gemini).
-- Refroidissements persistants par modèle et fournisseur avec SQLite partagé, sans neutraliser tous les modèles d'un fournisseur pour une erreur propre à un modèle.
-- Classification des erreurs HTTP (429, 5xx, expiration, etc.) et respect encadré de Retry-After.
-- Budget de temps borné pour les tentatives de secours : 20 s par fournisseur et 45 s pour le fallback automatique.
-- Journal privé des tentatives : fournisseur, modèle, succès/erreur, durée API, motif du basculement et échéance de refroidissement.
-- Présentation de l'activité dans l'administration PHP, en heure de Paris (été/hiver automatique).
-- Compatibilité avec les configurations existantes, sans inférence locale ni activation de modèles payants.
-- Tests hors ligne du vrai moteur IM avec fournisseurs simulés (429 → 503 → succès Gemini), deux avatars et quota SQLite commun, délais, réponses vides et mode single.
-
-## Déploiement
-Le ZIP contient les composants .NET 8 Linux x64 et les fichiers d'administration. Sauvegarder la version installée et utiliser la maintenance générale avant de remplacer DLL/contrôleur/Web. Conserver les clés API, appsettings.json, données SQLite et connaissances.
-
-**Important :** la V2 (catalogue de modèles) n'est PAS incluse. Son développement reste séparé dans la branche feature/ai-catalog-v2 / PR #6.
-
-Code source V1 : commit 25ca6d8ad005825970eb3638026cf65ebfcb90ca.
-Build GitHub Actions validé : https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/actions/runs/46007418008
+          # OpenSim AI Bridge v1.2.0 — Routeur IA V1 stabilisé
+          
+          Cette version correspond à la V1 du routeur IA intelligent, fusionnée par la PR #5 le 27 novembre 2026. Elle est utilisée sur BloodMoon AI (OpenSimulator) avec réponses IM normales confirmées en production.
+          
+          ## Améliorations
+          - Basculement automatique fiable entre les fournisseurs distants configurés et approuvés (Groq, OpenRouter, Gemini).
+          - Refroidissements persistants par modèle et fournisseur avec SQLite partagé, sans neutraliser tous les modèles d'un fournisseur pour une erreur propre à un modèle.
+          - Classification des erreurs HTTP (429, 5xx, expiration, etc.) et respect encadré de Retry-After.
+          - Budget de temps borné pour les tentatives de secours : 20 s par fournisseur et 45 s pour le fallback automatique.
+          - Journal privé des tentatives : fournisseur, modèle, succès/erreur, durée API, motif du basculement et échéance de refroidissement.
+          - Présentation de l'activité dans l'administration PHP, en heure de Paris (été/hiver automatique).
+          - Compatibilité avec les configurations existantes, sans inférence locale ni activation de modèles payants.
+          - Tests hors ligne du vrai moteur IM avec fournisseurs simulés (429 → 503 → succès Gemini), deux avatars et quota SQLite commun, délais, réponses vides et mode single.
+          
+          ## Déploiement
+          Le ZIP contient les composants .NET 8 Linux x64 et les fichiers d'administration. Sauvegarder la version installée et utiliser la maintenance générale avant de remplacer DLL/contrôleur/Web. Conserver les clés API, appsettings.json, données SQLite et connaissances.
+          
+          **Important :** la V2 (catalogue de modèles) n'est PAS incluse. Son développement reste séparé dans la branche feature/ai-catalog-v2 / PR #6.
+          
+          Code source V1 : commit 25ca6d8ad005825970eb3638026cf65ebfcb90ca.
+          Build GitHub Actions validé : https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/actions/runs/46007418008
 RELEASE_NOTES
           gh release create v1.2.0 \
             OpenSim-AI-Bridge-v1.2.0-linux-x64.zip SHA256SUMS \
