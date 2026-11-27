@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
@@ -76,7 +77,8 @@ public sealed class RemoteAiResponder : IDisposable
 
     // Bounded, per-avatar admin-only activity. No resident identifiers,
     // questions, responses or API credentials are recorded.
-    private void RecordActivity(RemoteAiProfile profile, string outcome, int? httpStatus = null, bool switched = false)
+    private void RecordActivity(RemoteAiProfile profile, string outcome, int? httpStatus = null, bool switched = false,
+                                long? durationMs = null, string? reason = null, DateTimeOffset? cooldownUntilUtc = null)
     {
         if (string.IsNullOrEmpty(activityFile)) return;
         lock (activitySync)
@@ -96,7 +98,10 @@ public sealed class RemoteAiResponder : IDisposable
                     model = profile.Model,
                     outcome,
                     httpStatus,
-                    switched
+                    switched,
+                    durationMs,
+                    reason,
+                    cooldownUntilUtc = cooldownUntilUtc?.ToString("O")
                 });
                 rows.Add(row);
                 Directory.CreateDirectory(Path.GetDirectoryName(activityFile)!);
@@ -253,7 +258,7 @@ public sealed class RemoteAiResponder : IDisposable
                 if (deadline.Expired) break;
                 if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > DateTimeOffset.UtcNow)
                 {
-                    RecordActivity(profile, "cooldown");
+                    RecordActivity(profile, "cooldown", reason: "profile_cooldown", cooldownUntilUtc: until);
                     switched = true;
                     continue;
                 }
@@ -261,7 +266,7 @@ public sealed class RemoteAiResponder : IDisposable
                 var key = Environment.GetEnvironmentVariable(profile.ApiKeyEnv);
                 if (string.IsNullOrWhiteSpace(key) || !Endpoints.TryGetValue(profile.Provider, out var endpoint))
                 {
-                    RecordActivity(profile, "not_configured");
+                    RecordActivity(profile, "not_configured", reason: "missing_key_or_endpoint");
                     switched = true;
                     continue;
                 }
@@ -273,7 +278,8 @@ public sealed class RemoteAiResponder : IDisposable
                     Math.Min(settings.MaxRequestsPerHour, SharedProviderQuota.MaxAttemptsPerProviderHour),
                     out var quotaReason, profile.Model))
                 {
-                    RecordActivity(profile, quotaReason == "model-cooldown" ? "cooldown" : "local_quota");
+                    RecordActivity(profile, quotaReason is "model-cooldown" or "cooldown" ? "cooldown" : "local_quota",
+                        reason: quotaReason);
                     switched = true;
                     continue;
                 }
@@ -282,6 +288,7 @@ public sealed class RemoteAiResponder : IDisposable
                 // Timeout covers HTTP response headers, body parsing and reading.
                 var attemptTimeout = deadline.NextAttemptTimeout();
                 if (attemptTimeout <= TimeSpan.Zero) break;
+                var attemptClock = Stopwatch.StartNew();
                 try
                 {
                     using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -323,7 +330,9 @@ public sealed class RemoteAiResponder : IDisposable
                                 DateTimeOffset.UtcNow, failure.Cooldown);
                         // Preserve established Web audit vocabulary. The new
                         // category is a safe, bounded classification label.
-                        RecordActivity(profile, "http_error", (int)response.StatusCode);
+                        RecordActivity(profile, "http_error", (int)response.StatusCode,
+                            durationMs: attemptClock.ElapsedMilliseconds, reason: failure.Category,
+                            cooldownUntilUtc: DateTimeOffset.UtcNow + failure.Cooldown);
                         switched = true;
                         continue;
                     }
@@ -334,13 +343,15 @@ public sealed class RemoteAiResponder : IDisposable
                             .GetProperty("message").GetProperty("content").GetString()?.Trim();
                     if (string.IsNullOrEmpty(reply))
                     {
-                        RecordActivity(profile, "empty_reply");
+                        RecordActivity(profile, "empty_reply", durationMs: attemptClock.ElapsedMilliseconds,
+                            reason: "empty_reply");
                         switched = true;
                         continue;
                     }
                     // Preserve the complete model response; the IM transport splits it safely.
                     Remember(sender, now, prompt, reply);
-                    RecordActivity(profile, "success", (int)response.StatusCode, switched);
+                    RecordActivity(profile, "success", (int)response.StatusCode, switched,
+                        durationMs: attemptClock.ElapsedMilliseconds);
                     // Never disclose provider/API keys in resident messages.
                     return (switched && Multi ? SwitchNotice(prompt) : "") + reply;
                 }
@@ -350,13 +361,16 @@ public sealed class RemoteAiResponder : IDisposable
                     // Per-attempt deadline: allow the next approved profile
                     // until the total request deadline expires.
                     unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
-                    RecordActivity(profile, "transport_error");
+                    RecordActivity(profile, "transport_error", durationMs: attemptClock.ElapsedMilliseconds,
+                        reason: "timeout", cooldownUntilUtc: unavailableUntil[profile.Id]);
                     switched = true;
                 }
                 catch (Exception ex) when (ex is HttpRequestException or JsonException or InvalidOperationException or KeyNotFoundException)
                 {
-                    unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
-                    RecordActivity(profile, "transport_error");
+                    unavailableUntil[profile.Id] = DateTimeOffset.UtcNow + TimeSpan.FromMinutes(3);
+                    RecordActivity(profile, "transport_error", durationMs: attemptClock.ElapsedMilliseconds,
+                        reason: ex is HttpRequestException ? "network" : "invalid_response",
+                        cooldownUntilUtc: unavailableUntil[profile.Id]);
                     // Transport error for this model does not disable its provider.
                     switched = true;
                 }
