@@ -108,6 +108,49 @@ class CatalogControllerTests(unittest.TestCase):
                 self.assertEqual(prepared["provider"], "Groq")
                 self.assertFalse(prepared["enabled"])
 
+    def test_all_supported_providers_use_catalog_aliases(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "catalog" / "catalog.json"
+            path.parent.mkdir()
+            path.write_text(json.dumps({
+                "schemaVersion": 2, "generatedAtUtc": "2026-11-27T12:00:00Z",
+                "models": [
+                    {"provider": "groq-cloud", "providerName": "Groq",
+                     "model": "openai/gpt-oss-20b", "modelName": "GPT OSS 20B",
+                     "routerCompatible": False},
+                    {"provider": "google-ai-studio", "providerName": "Google AI Studio",
+                     "model": "gemini-3.5-flash-lite", "modelName": "Gemini 3.5 Flash Lite",
+                     "routerCompatible": False},
+                    {"provider": "openrouter", "providerName": "OpenRouter",
+                     "model": "google/gemma-4-31b-it:free", "modelName": "Gemma",
+                     "routerCompatible": True},
+                    {"provider": "vertex-ai-express", "providerName": "Google Vertex AI",
+                     "model": "gemini-2.5-flash", "modelName": "Gemini 2.5 Flash",
+                     "routerCompatible": False}
+                ]
+            }))
+            with patch.object(control, "FLEET_ROOT", root):
+                for alias, expected_slug, expected_adapter, model in [
+                    ("Groq", "groq-cloud", "Groq", "openai/gpt-oss-20b"),
+                    ("Gemini", "google-ai-studio", "Gemini", "gemini-3.5-flash-lite"),
+                    ("Google AI Studio", "google-ai-studio", "Gemini", "gemini-3.5-flash-lite"),
+                    ("OpenRouter", "openrouter", "OpenRouter", "google/gemma-4-31b-it:free")
+                ]:
+                    matches = control.catalog_list({"provider": alias, "compatibility": "supported"})
+                    self.assertEqual(matches["total"], 1, alias)
+                    self.assertEqual(matches["models"][0]["provider"], expected_slug)
+                    selection = control.catalog_lookup({"provider": expected_slug, "model": model})
+                    self.assertEqual(selection["provider"], expected_adapter)
+                    self.assertFalse(selection["enabled"])
+                gemini = control.catalog_list({"query": "Gemini", "compatibility": "supported"})
+                self.assertEqual(gemini["total"], 1)
+                self.assertEqual(gemini["models"][0]["provider"], "google-ai-studio")
+                other = control.catalog_list({"provider": "vertex", "compatibility": "other"})
+                self.assertEqual(other["total"], 1)
+                with self.assertRaises(control.ControlError):
+                    control.catalog_lookup({"provider": "vertex-ai-express", "model": "gemini-2.5-flash"})
+
     def test_read_only_filtered_catalog_and_missing_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
