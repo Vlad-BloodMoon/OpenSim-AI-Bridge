@@ -105,6 +105,21 @@ Les noms d'interfaces sont **des contrats de conception proposés**, pas des cla
 - [ ] **A0.9 — Tests transversaux dès V1** : même corpus de tests contractuels exécuté à chaque phase : ordre manuel, autorisation, sélection non facturable, cooldown, reprise, concurrence multi-bots, protection contre les dépenses, absence de fuite de secrets et d'IM.
 - [ ] **A0.10 — Décision explicite avant la première PR** : noter le schéma SQLite, les invariants, les points d'extension, le format des événements et les exemples de migration ; revue des risques sur les bots en production. Ces décisions guident toutes les issues, sans rouvrir l'architecture à chaque version.
 
+### Garantie de continuité de service : le bot doit toujours répondre
+
+**Critère bloquant pour chacune des trois phases : l'évolution ne doit jamais interrompre ou dégrader le circuit IM actuellement en production.** Ce projet améliore l'existant ; il ne remplace ni le bot ni sa pile logicielle.
+
+- [ ] **B0.1 — Ligne de base reproductible** : tests hors ligne + test IM réel avant modification sur avatar de référence : réception IM, réponse de Groq, réponse longue Firestorm, autorisations, mémoire courte, connaissance PDF/TXT/FTS5, traduction, délais anti-abus et reconnexion.
+- [ ] **B0.2 — Configuration rétrocompatible** : conserver tous les profils, IDs, clés et paramètres existants ; nouveaux champs facultatifs et désactivés par défaut. Aucun changement imposé aux avatars ni aux résidents.
+- [ ] **B0.3 — Séparation des défaillances** : indisponibilité de l'annuaire, cache, statistiques ou lecture d'un en-tête inconnu ne doit jamais devenir une panne de l'IM ; les composants annexes dégradent leur fonction propre et le routeur se replie sur la stratégie stable.
+- [ ] **B0.4 — Une route de réponse stable** : un seul chemin `IM → recherche documentaire → candidats autorisés → API distante → retour IM`. Le socle V1 doit pouvoir répondre même sans catalogue V2 ni stratégie V3.
+- [ ] **B0.5 — Tests de non-régression obligatoires** à chaque PR et version : réponses directes, secours, profils désactivés, limites, multi-avatar, mémoire, traduction, recherche documentaire, Firestorm, erreurs réseau et persistance des quotas.
+- [ ] **B0.6 — Déploiement progressif** : tester hors ligne, puis un **avatar de test**, puis déployer aux avatars utilisés par les résidents ; pas de remplacement simultané sans retour arrière prêt. Une interruption courte et planifiée en maintenance n'est pas une garantie de zéro coupure.
+- [ ] **B0.7 — Retour arrière garanti** : sauvegarde du binaire, PHP, contrôleur et données SQLite avant changement, migrations additives, version antérieure et procédure de restauration vérifiées. Garder les copies protégées hors Web.
+- [ ] **B0.8 — Go/no-go** : **bloquer toute mise en production** si un test IM ancien échoue, si une donnée/configuration est perdue, si un profil non autorisé est appelé ou si le bot ne peut plus répondre. Corriger sur environnement de test puis retester.
+
+**Règle d'exploitation :** si la nouvelle rotation échoue, revenir immédiatement au routage à priorité fixe et au binaire validé ; ne pas tenter de corriger la panne en direct sur les bots publics. Ne jamais promettre qu'un fournisseur distant répondra toujours : en cas d'indisponibilité de *toutes* les API autorisées, le bot doit émettre une réponse d'indisponibilité claire, sans bloquer ni planter.
+
 ### Compatibilité et évolution incrémentale
 
 | Aspect | V1 — socle stable | V2 — extension | V3 — extension |
