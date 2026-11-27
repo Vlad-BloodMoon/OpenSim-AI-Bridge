@@ -46,7 +46,7 @@ public sealed class RemoteAiResponder : IDisposable
             ["Gemini"] = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         };
 
-    private readonly HttpClient client = new() { Timeout = TimeSpan.FromSeconds(20) };
+    private readonly HttpClient client;
     private readonly RemoteAiSettings settings;
     private readonly string? legacyKey;
     private readonly HashSet<Guid> authorized;
@@ -64,11 +64,20 @@ public sealed class RemoteAiResponder : IDisposable
     private int usedThisHour;
 
     public RemoteAiResponder(RemoteAiSettings settings, string? activityFile = null)
+        : this(settings, activityFile, null, null) { }
+
+    // Test-only seam: the production constructor above keeps exactly the
+    // original HTTP transport and shared quota location. A fake handler lets
+    // CI exercise the *real* responder without network access or real keys.
+    internal RemoteAiResponder(RemoteAiSettings settings, string? activityFile,
+                               HttpMessageHandler? testHandler, string? testQuotaPath)
     {
         this.settings = settings;
         this.activityFile = activityFile;
+        client = testHandler is null ? new HttpClient() : new HttpClient(testHandler);
+        client.Timeout = TimeSpan.FromSeconds(20);
         knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
-        sharedQuota = new SharedProviderQuota(SharedProviderQuota.DefaultPath());
+        sharedQuota = new SharedProviderQuota(testQuotaPath ?? SharedProviderQuota.DefaultPath());
         translator = new BloodMoonTranslator(settings.UseBloodMoonTranslation,
                                               settings.BloodMoonTranslationTokenEnv);
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
