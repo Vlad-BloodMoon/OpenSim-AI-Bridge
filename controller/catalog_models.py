@@ -13,7 +13,8 @@ SCHEMA_VERSION = 2
 MAX_PROVIDERS = 250
 MAX_MODELS = 3000
 MAX_FIELD = 300
-SUPPORTED_ROUTER_PROVIDERS = frozenset({"groq", "openrouter", "gemini"})
+# Catalog slugs do not always match our internal adapter identifiers.
+SUPPORTED_ROUTER_PROVIDERS = frozenset({"groq", "groq-cloud", "openrouter", "gemini"})
 
 
 class CatalogError(ValueError):
