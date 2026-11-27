@@ -6,7 +6,7 @@
 
 **EN —** A platform for running and managing one or more headless OpenSimulator avatars, answering residents with remote AI models and retrieving your grid's documentation. **No local LLM inference** is required.
 
-> **Release / Version — v1.0.0 (24 November 2026):** first **public stable-tagged GitHub Release**, with a Linux x64 .NET 8 distribution, automated tests, and BloodMoon in-world validation of visitor greeting and facing. **This is not a claim of universal production certification.** Advanced Web administration still requires environment-specific setup and security review. Provider quotas, privacy, deployment hardening and OpenSimulator compatibility must be evaluated on each installation.
+> **Release / Version — v1.1.0 (27 November 2026):** current public baseline before the planned V1–V3 intelligent router evolution. Includes provider activity auditing per avatar and incremental PDF library indexing; **the intelligent router and external model catalog are planned, not implemented**. The original v1.0.0 release remains available. The initial v1.0.0 release included a Linux x64 .NET 8 distribution, automated tests and BloodMoon in-world validation of visitor greeting and facing. **This is not a claim of universal production certification.** Advanced Web administration still requires environment-specific setup and security review. Provider quotas, privacy, deployment hardening and OpenSimulator compatibility must be evaluated on each installation.
 
 ## What it does / Fonctionnalités
 
@@ -69,7 +69,7 @@ Question -> dedicated PHP translation gateway -> existing Azure Translator
 
 ## Download / Téléchargement
 
-**[GitHub Releases — v1.0.0](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/releases/tag/v1.0.0)** · [New-install smoke-test guide (FR/EN)](docs/RELEASE_INSTALL_FR_EN.md) · [Release notes (FR/EN)](docs/RELEASE_NOTES_V1.0.0.md).
+**[GitHub Releases — v1.1.0](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/releases/tag/v1.1.0)** · [New-install smoke-test guide (FR/EN)](docs/RELEASE_INSTALL_FR_EN.md) · [Release notes v1.1.0 (FR/EN)](docs/RELEASE_NOTES_V1.1.0.md) · [Previous v1.0.0](https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/releases/tag/v1.0.0).
 
 The public archive is a framework-dependent Linux x64 ZIP with a separate `SHA256SUMS.txt` checksum file, **not** an unattended universal Web installer. The operator must supply their own grid credentials, protect configuration and obtain access to any remote AI service they enable. No real passwords, private indexes or paid-provider keys are shipped.
 
