@@ -442,8 +442,8 @@ foreach ($activityEvents as $activityEvent) {
         break;
     }
 }
-$catalogQuery = is_string($_GET['q'] ?? null) ? mb_substr(trim($_GET['q']), 0, 100) : '';
-$catalogProvider = is_string($_GET['provider'] ?? null) ? mb_substr(trim($_GET['provider']), 0, 80) : '';
+$catalogQuery = is_string($_GET['q'] ?? null) ? substr(trim($_GET['q']), 0, 100) : '';
+$catalogProvider = is_string($_GET['provider'] ?? null) ? substr(trim($_GET['provider']), 0, 80) : '';
 $catalogCompatibility = in_array($_GET['compatibility'] ?? 'all', ['all', 'supported', 'other'], true)
     ? (string)($_GET['compatibility'] ?? 'all') : 'all';
 $catalogResponse = $authenticated && $page === 'catalog'
