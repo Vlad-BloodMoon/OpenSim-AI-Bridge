@@ -57,18 +57,58 @@ public sealed class RemoteAiResponder : IDisposable
     private readonly KnowledgeSearch knowledge;
     private readonly SharedProviderQuota sharedQuota;
     private readonly BloodMoonTranslator translator;
+    private readonly string? activityFile;
+    private readonly object activitySync = new();
     private DateTimeOffset hourStart = DateTimeOffset.UtcNow;
     private int usedThisHour;
 
-    public RemoteAiResponder(RemoteAiSettings settings)
+    public RemoteAiResponder(RemoteAiSettings settings, string? activityFile = null)
     {
         this.settings = settings;
+        this.activityFile = activityFile;
         knowledge = new KnowledgeSearch(KnowledgeSearch.DefaultPath());
         sharedQuota = new SharedProviderQuota(SharedProviderQuota.DefaultPath());
         translator = new BloodMoonTranslator(settings.UseBloodMoonTranslation,
                                               settings.BloodMoonTranslationTokenEnv);
         authorized = new HashSet<Guid>(settings.AuthorizedUuidList.Where(s => Guid.TryParse(s, out _)).Select(Guid.Parse));
         legacyKey = Environment.GetEnvironmentVariable(settings.ApiKeyEnv);
+    }
+
+    // Bounded, per-avatar admin-only activity. No resident identifiers,
+    // questions, responses or API credentials are recorded.
+    private void RecordActivity(RemoteAiProfile profile, string outcome, int? httpStatus = null, bool switched = false)
+    {
+        if (string.IsNullOrEmpty(activityFile)) return;
+        lock (activitySync)
+        {
+            try
+            {
+                var rows = new List<JsonElement>();
+                if (File.Exists(activityFile) && new FileInfo(activityFile).Length <= 65536)
+                {
+                    using var doc = JsonDocument.Parse(File.ReadAllText(activityFile));
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                        rows.AddRange(doc.RootElement.EnumerateArray().Select(e => e.Clone()).TakeLast(99));
+                }
+                var row = JsonSerializer.SerializeToElement(new {
+                    utc = DateTimeOffset.UtcNow.ToString("O"),
+                    provider = profile.Provider,
+                    model = profile.Model,
+                    outcome,
+                    httpStatus,
+                    switched
+                });
+                rows.Add(row);
+                Directory.CreateDirectory(Path.GetDirectoryName(activityFile)!);
+                var tmp = activityFile + "." + Environment.ProcessId + ".tmp";
+                File.WriteAllText(tmp, JsonSerializer.Serialize(rows));
+                File.Move(tmp, activityFile, true);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                // Observability must never interrupt an IM answer or expose secrets.
+            }
+        }
     }
 
     // Legacy mode deliberately retains its original Groq-only public authorization.
@@ -207,13 +247,17 @@ public sealed class RemoteAiResponder : IDisposable
             {
                 if (unavailableUntil.TryGetValue(profile.Id, out var until) && until > now)
                 {
+                    RecordActivity(profile, "cooldown");
                     switched = true;
                     continue;
                 }
 
                 var key = Environment.GetEnvironmentVariable(profile.ApiKeyEnv);
                 if (string.IsNullOrWhiteSpace(key) || !Endpoints.TryGetValue(profile.Provider, out var endpoint))
+                {
+                    RecordActivity(profile, "not_configured");
                     continue;
+                }
 
                 // Multi-avatar admission is shared by provider, never by avatar.
                 // A provider's local budget/cooldown does NOT stop the conversation:
@@ -222,6 +266,7 @@ public sealed class RemoteAiResponder : IDisposable
                     Math.Min(settings.MaxRequestsPerHour, SharedProviderQuota.MaxAttemptsPerProviderHour),
                     out _))
                 {
+                    RecordActivity(profile, "local_quota");
                     switched = true;
                     continue;
                 }
@@ -251,6 +296,7 @@ public sealed class RemoteAiResponder : IDisposable
                         var retry = response.Headers.RetryAfter?.Delta ?? TimeSpan.FromMinutes(3);
                         var boundedRetry = retry > TimeSpan.FromHours(1) ? TimeSpan.FromHours(1) : retry;
                         unavailableUntil[profile.Id] = now + boundedRetry;
+                        RecordActivity(profile, "http_error", (int)response.StatusCode);
                         // A 503/429 can be specific to one model. Keep other models eligible.
                         switched = true;
                         continue;
@@ -259,6 +305,7 @@ public sealed class RemoteAiResponder : IDisposable
                     {
                         // 4xx is often an invalid key or model; do not retry automatically.
                         unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(15);
+                        RecordActivity(profile, "http_error", (int)response.StatusCode);
                         // Invalid model/key may be profile-specific: do not block other models.
                         switched = true;
                         continue;
@@ -270,11 +317,13 @@ public sealed class RemoteAiResponder : IDisposable
                             .GetProperty("message").GetProperty("content").GetString()?.Trim();
                     if (string.IsNullOrEmpty(reply))
                     {
+                        RecordActivity(profile, "empty_reply");
                         switched = true;
                         continue;
                     }
                     // Preserve the complete model response; the IM transport splits it safely.
                     Remember(sender, now, prompt, reply);
+                    RecordActivity(profile, "success", (int)response.StatusCode, switched);
                     // Never disclose provider/API keys in resident messages.
                     return (switched && Multi ? SwitchNotice(prompt) : "") + reply;
                 }
@@ -282,6 +331,7 @@ public sealed class RemoteAiResponder : IDisposable
                 catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException or KeyNotFoundException)
                 {
                     unavailableUntil[profile.Id] = now + TimeSpan.FromMinutes(3);
+                    RecordActivity(profile, "transport_error");
                     // Transport error for this model does not disable its provider.
                     switched = true;
                 }
