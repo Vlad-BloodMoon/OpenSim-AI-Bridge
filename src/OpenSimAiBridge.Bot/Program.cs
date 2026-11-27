@@ -315,7 +315,21 @@ if (args.Length == 1 && args[0] == "--verify-shared-quota")
         botA.RecordCooldown("OpenRouter", t, TimeSpan.FromMinutes(3));
         if (botB.TryReserve("OpenRouter", t, 2, out _))
             throw new InvalidOperationException("The shared provider cooldown is not enforced.");
-        if (!botA.TryReserve("Groq", t.AddHours(1), 2, out _))
+        // Model-level cooldowns are independent from the provider's shared
+        // budget and do not consume attempts when skipping blocked models.
+        var modelTime = t.AddHours(2);
+        botA.RecordModelCooldown("Groq", "model-A", modelTime, TimeSpan.FromMinutes(3));
+        if (botB.TryReserve("Groq", modelTime, 2, out var blockedReason, "model-A") ||
+            blockedReason != "model-cooldown")
+            throw new InvalidOperationException("A 429 model cooldown must reach the other avatar.");
+        if (!botB.TryReserve("Groq", modelTime, 2, out _, "model-B") ||
+            !botA.TryReserve("Groq", modelTime, 2, out _, "model-B"))
+            throw new InvalidOperationException("A blocked Groq model must not disable another Groq model.");
+        if (botB.TryReserve("Groq", modelTime, 2, out _, "model-B"))
+            throw new InvalidOperationException("Model cooldown skips must not consume provider budget.");
+        if (!botB.TryReserve("Groq", modelTime.AddMinutes(4), 2, out _, "model-A"))
+            throw new InvalidOperationException("The expired model cooldown must allow new attempts.");
+        if (!botA.TryReserve("OpenRouter", t.AddHours(1), 2, out _))
             throw new InvalidOperationException("A new hourly bucket must allow fresh requests.");
         Console.WriteLine("Shared provider quota and automatic fallback preconditions passed.");
         return 0;
