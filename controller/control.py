@@ -763,24 +763,35 @@ def knowledge_local_refresh(install):
     return {"started": True}
 
 
+CATALOG_PAGE_SIZE = 25
+CATALOG_SORTS = frozenset(("provider", "model", "context", "free", "compatible"))
+
+
 def catalog_list(filters=None):
-    """Read-only, capped catalog search independent of every avatar and AI key."""
+    """Read-only paginated catalog: filter and sort before slicing."""
     filters = filters if isinstance(filters, dict) else {}
-    if set(filters) - {"query", "provider", "compatibility"}:
+    if set(filters) - {"query", "provider", "compatibility", "page", "sort", "direction"}:
         raise ControlError("Invalid catalog search")
     query = filters.get("query", "")
     provider = filters.get("provider", "")
     compatibility = filters.get("compatibility", "all")
+    page = filters.get("page", 1)
+    sort = filters.get("sort", "provider")
+    direction = filters.get("direction", "asc")
     if (not isinstance(query, str) or len(query) > 100
         or not isinstance(provider, str) or len(provider) > 80
-        or compatibility not in ("all", "supported", "other")):
+        or compatibility not in ("all", "supported", "other")
+        or type(page) is not int or not 1 <= page <= 1000
+        or sort not in CATALOG_SORTS or direction not in ("asc", "desc")):
         raise ControlError("Invalid catalog filters")
     try:
         snapshot = catalog_cache.read_cache(FLEET_ROOT / "catalog" / "catalog.json")
     except (catalog_cache.CatalogError, OSError):
         snapshot = None
     if snapshot is None:
-        return {"available": False, "models": [], "total": 0, "generatedAtUtc": None}
+        return {"available": False, "models": [], "total": 0,
+                "page": 1, "pages": 0, "pageSize": CATALOG_PAGE_SIZE,
+                "sort": sort, "direction": direction, "generatedAtUtc": None}
     matched = []
     query = query.casefold().strip()
     provider = provider.casefold().strip()
@@ -809,8 +820,34 @@ def catalog_list(filters=None):
                 if type(record.get("contextTokens")) is int else None,
             "vision": record.get("vision") is True,
         })
-    return {"available": True, "models": matched[:30], "total": len(matched),
+    # Total ordering avoids duplicates/omissions between adjacent pages.
+    def key(record):
+        provider_name = record["providerName"].casefold()
+        model_name = record["modelName"].casefold()
+        tie = (provider_name, record["provider"].casefold(),
+               model_name, record["model"].casefold())
+        if sort == "model":
+            return (model_name, record["model"].casefold(), *tie)
+        if sort == "context":
+            return (record["contextTokens"] is None,
+                    record["contextTokens"] or 0, *tie)
+        if sort == "free":
+            return (record["freeTierClaim"].casefold(), *tie)
+        if sort == "compatible":
+            return (not record["routerCompatible"], *tie)
+        return tie
+
+    matched.sort(key=key, reverse=direction == "desc")
+    total = len(matched)
+    pages = (total + CATALOG_PAGE_SIZE - 1) // CATALOG_PAGE_SIZE
+    page = min(page, max(1, pages))
+    start = (page - 1) * CATALOG_PAGE_SIZE
+    return {"available": True, "models": matched[start:start + CATALOG_PAGE_SIZE],
+            "total": total, "page": page, "pages": pages,
+            "pageSize": CATALOG_PAGE_SIZE, "sort": sort,
+            "direction": direction,
             "generatedAtUtc": str(snapshot.get("generatedAtUtc", ""))[:64]}
+
 
 
 def execute(command, lock, confirm, install, settings=None, bot_id="main", credentials=None, expected_name=None):
