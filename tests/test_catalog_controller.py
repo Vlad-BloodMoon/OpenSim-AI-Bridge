@@ -12,6 +12,46 @@ import catalog_cache
 
 
 class CatalogControllerTests(unittest.TestCase):
+    def test_sort_and_paginate_all_records_before_slicing(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / "catalog" / "catalog.json"
+            path.parent.mkdir()
+            records = [
+                {"provider": "groq", "providerName": "Groq", "model": f"model-{i:03d}",
+                 "modelName": f"Model {i:03d}", "sourceUrl": "https://free-llm.com/provider/groq",
+                 "freeTierClaim": "unknown", "routerCompatible": True,
+                 "contextTokens": i * 100, "vision": False}
+                for i in range(75)
+            ]
+            path.write_text(json.dumps({
+                "schemaVersion": 2, "generatedAtUtc": "2026-11-27T12:00:00Z",
+                "source": "https://free-llm.com", "models": records,
+            }))
+            with patch.object(control, "FLEET_ROOT", root):
+                first = control.catalog_list({"sort": "model", "direction": "desc", "page": 1})
+                last = control.catalog_list({"sort": "model", "direction": "desc", "page": 3})
+                self.assertEqual(first["total"], 75)
+                self.assertEqual(first["pages"], 3)
+                self.assertEqual(len(first["models"]), 25)
+                self.assertEqual(first["models"][0]["model"], "model-074")
+                self.assertEqual(last["models"][0]["model"], "model-024")
+                seen = [
+                    item["model"]
+                    for page in range(1, 4)
+                    for item in control.catalog_list({
+                        "sort": "model", "direction": "desc", "page": page
+                    })["models"]
+                ]
+                self.assertEqual(len(seen), 75)
+                self.assertEqual(len(set(seen)), 75)
+                self.assertEqual(control.catalog_list({"page": 900})["page"], 3)
+                self.assertEqual(control.catalog_list({"sort": "context", "direction": "asc"})["models"][0]["contextTokens"], 0)
+                for invalid in ({"sort": "apiKey"}, {"direction": "sideways"},
+                                {"page": -1}, {"page": "2"}):
+                    with self.assertRaises(control.ControlError):
+                        control.catalog_list(invalid)
+
     def test_read_only_filtered_catalog_and_missing_cache(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
