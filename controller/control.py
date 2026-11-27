@@ -26,7 +26,7 @@ import provider_profiles
 import protected_terms
 
 UNIT = "opensim-ai-bridge.service"
-COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled"))
+COMMANDS = frozenset(("status", "start", "stop", "restart", "firestorm", "resume", "get_settings", "save_settings", "get_ai_settings", "save_ai_settings", "list_bots", "create_bot", "delete_bot", "fleet_status", "fleet_stop", "fleet_resume", "knowledge_status", "knowledge_refresh", "knowledge_local_refresh", "vocabulary_list", "vocabulary_upsert", "vocabulary_delete", "get_multi_ai_settings", "save_multi_ai_settings", "test_multi_ai_profile", "get_avatar_ai_enabled", "set_avatar_ai_enabled", "ai_activity"))
 MAX_REQUEST = 12288
 FLEET_ROOT = Path("/var/lib/opensim-ai-bridge")
 FLEET_LOCK = FLEET_ROOT / "global-maintenance.lock"
@@ -146,6 +146,42 @@ def avatar_presence(install):
     except (OSError, ValueError, TypeError, AttributeError):
         return {"connected": False, "state": "unavailable"}
 
+
+
+def read_ai_activity(install):
+    """Read bounded per-avatar activity without exposing messages or credentials."""
+    path = install / "data" / "ai-provider-activity.json"
+    try:
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 65536:
+            raise ControlError("Invalid AI activity file")
+        values = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(values, list):
+            raise ValueError("Invalid activity history")
+        results = []
+        for value in values[-50:]:
+            if not isinstance(value, dict):
+                continue
+            provider = value.get("provider")
+            model = value.get("model")
+            outcome = value.get("outcome")
+            utc = value.get("utc")
+            code = value.get("httpStatus")
+            if (not all(isinstance(x, str) for x in (provider, model, outcome, utc))
+                or len(provider) > 30 or len(model) > 120 or len(utc) > 40
+                or outcome not in ("success", "http_error", "local_quota",
+                                   "cooldown", "not_configured", "empty_reply",
+                                   "transport_error")
+                or not (code is None or type(code) is int and 100 <= code <= 599)):
+                continue
+            results.append({"utc": utc, "provider": provider, "model": model,
+                            "outcome": outcome, "httpStatus": code,
+                            "switched": value.get("switched") is True})
+        return {"events": list(reversed(results))}
+    except FileNotFoundError:
+        return {"events": []}
+    except (OSError, ValueError, TypeError, UnicodeDecodeError) as exc:
+        raise ControlError("Cannot read AI activity history") from exc
 
 
 def config_file(install):
@@ -778,6 +814,8 @@ def execute(command, lock, confirm, install, settings=None, bot_id="main", crede
             raise ControlError(str(exc)) from exc
     else:
         unit = UNIT
+    if command == "ai_activity":
+        return read_ai_activity(install)
     if command == "get_avatar_ai_enabled":
         return get_avatar_ai_enabled(install)
     if command == "set_avatar_ai_enabled":
