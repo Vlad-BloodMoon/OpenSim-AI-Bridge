@@ -67,6 +67,73 @@
 7. Les sources tierces servent à **informer** ; le catalogue doit pouvoir être hors ligne sans empêcher le bot de répondre avec ses profils déjà configurés.
 8. Préserver l'accès aux services existants, la compatibilité .NET 8, Linux, PHP et le fonctionnement via Firestorm.
 
+## 2 bis. Architecture cible commune à V1, V2 et V3 — à définir avant de coder
+
+**Principe impératif : V1, V2 et V3 sont des incréments d'une même architecture, PAS trois versions à réécrire.** V1 installe le socle final ; V2 ajoute des données de découverte ; V3 ajoute une autre stratégie de sélection. Le moteur d'exécution des API, le stockage de l'état, le schéma de configuration et les frontières de sécurité restent les mêmes.
+
+### Chaîne de traitement définitive dès V1
+
+```text
+IM OpenSimulator
+   → autorisation / anti-abus / connaissance documentaire existante
+   → demande IA normalisée (modèle, capacités, priorité, budget, délai)
+   → sélection des candidats [IModelSelector]
+        V1 : PrioritySelector
+        V2 : PrioritySelector inchangé + catalogue consultatif indépendant
+        V3 : AdaptiveSelector opt-in ; PrioritySelector reste disponible
+   → validation commune [IEligibilityPolicy] :
+        modèle explicitement autorisé, coût, quotas, cooldown, capacités
+   → réservation partagée et atomique [IProviderStateStore : SQLite]
+   → exécution du fournisseur [IProviderAdapter / client HTTP existant]
+   → classification commune [IProviderErrorClassifier]
+   → événement d'observabilité [IAiActivitySink] sans IM ni identifiant résident
+   → succès IM OU candidat de secours dans la même enveloppe de délai
+```
+
+Les noms d'interfaces sont **des contrats de conception proposés**, pas des classes déjà créées. Ne pas forcer une abstraction inutile si l'implémentation .NET peut être plus simple ; garder **les responsabilités et contrats stables**.
+
+### Contrats stables à poser dès V1
+
+- [ ] **A0.1 — Modèle commun de candidat** : `ProviderId`, `ModelId`, `CredentialRef` (référence privée, jamais la clé), rang manuel, capacités, identité de politique de coût. Les identifiants sont stables et ne dépendent pas de l'ordre d'affichage.
+- [ ] **A0.2 — États communs de disponibilité** : `ready`, `rate_limited`, `daily_quota`, `auth_failed`, `model_unavailable`, `provider_unavailable`, `network_timeout`, `unknown`. Portée précise : modèle / clé / compte / fournisseur ; horodatage UTC de reprise, source de la décision et fiabilité de l'information.
+- [ ] **A0.3 — Un seul stockage SQLite partagé** : schéma versionné et migrations **additives** pour quotas, cooldowns et métriques agrégées ; mêmes clés logiques pour V1/V2/V3 ; écritures transactionnelles entre processus. Le catalogue a ses propres tables/cache, sans écraser l'état opérationnel.
+- [ ] **A0.4 — Un seul pipeline de tentatives** : exécution, classification HTTP, budget temps, autorisation, protection des coûts, enregistrement et failover sont partagés par le mode manuel et le futur mode intelligent. **Ne jamais dupliquer ce code en V3.**
+- [ ] **A0.5 — Sélection interchangeable** : politique de priorité actuelle activée par défaut ; ajout du mode automatique en V3 **sans changer l'exécuteur, les quotas, les API ou les profils**. Un simple retour de paramètre permet de revenir à la priorité fixe.
+- [ ] **A0.6 — Catalogue dissocié** : V2 lit une source externe vers un cache **consultatif**, sans appeler le routeur ni déclencher une activation automatique. On convertit un modèle du catalogue vers un candidat uniquement après validation humaine.
+- [ ] **A0.7 — Contrat admin versionné** : le contrôleur expose des vues de statut, capacités, quotas et catalogue sans secrets. Ajout de champs rétrocompatible (pas de changement de sens ni renommage non migré des champs du PHP existant).
+- [ ] **A0.8 — Compatibilité persistante** : lecture de `config/multi-ai.json`, clés `ai-keys/*` et SQLite existants ; migration idempotente, sauvegarde automatique avant migration et aucun effacement de données. Éventuels nouveaux réglages avec valeurs par défaut égales au comportement actuel.
+- [ ] **A0.9 — Tests transversaux dès V1** : même corpus de tests contractuels exécuté à chaque phase : ordre manuel, autorisation, sélection non facturable, cooldown, reprise, concurrence multi-bots, protection contre les dépenses, absence de fuite de secrets et d'IM.
+- [ ] **A0.10 — Décision explicite avant la première PR** : noter le schéma SQLite, les invariants, les points d'extension, le format des événements et les exemples de migration ; revue des risques sur les bots en production. Ces décisions guident toutes les issues, sans rouvrir l'architecture à chaque version.
+
+### Compatibilité et évolution incrémentale
+
+| Aspect | V1 — socle stable | V2 — extension | V3 — extension |
+| --- | --- | --- | --- |
+| Pipeline HTTP et fallback | Créé / fiabilisé | **Réutilisé tel quel** | **Réutilisé tel quel** |
+| Stockage des états opérationnels | SQLite commun migré | Identique | Identique + champs de métriques additifs |
+| Profils et clés existants | Conservés et migrés sans perte | Conservés ; catalogue propose des profils inactifs | Conservés ; nouvelle stratégie optionnelle |
+| Sélection | Priorité déterministe | Même priorité déterministe | Sélecteur intelligent supplémentaire, désactivable |
+| Catalogue | Contrat de métadonnées prévu, **aucun besoin du catalogue** | Import et recherche ajoutés | Peut contribuer au score **seulement après validation** |
+| Administration Web | État du moteur et événements | Onglet catalogue supplémentaire | Graphiques/stratégie en plus |
+| Retour arrière | Version précédente + schéma compatible | Désactivation catalogue sans effet IM | Repasse en priorité fixe instantanément |
+
+### Règles anti-refonte
+
+1. **Pas de « V2 remplace V1 » :** aucune suppression de classe, table ou API introduite en V1 pour gagner seulement une fonctionnalité V2/V3. Toute modification de contrat exige une migration explicite et des tests de compatibilité.
+2. **Pas de second routeur** pour le catalogue ou le mode intelligent. Un seul chemin pour tous les appels distants.
+3. **Pas de seconde vérité pour les quotas** : les règles configurées et les observations des en-têtes fournisseur sont réconciliées dans le stockage partagé ; l'annuaire ne définit jamais à lui seul les limites effectives.
+4. **Pas de déploiement global pour chaque ajout de modèle** si l'adaptateur du fournisseur existe déjà : configuration validée et test réel explicite doivent suffire.
+5. **Données privées séparées du dépôt** ; pas de modèle local, pas de nouvelle dépendance runtime FreeLLMAPI / Free-LLM.
+6. **Une étape achevée reste fonctionnelle seule** : V1 peut tourner sans V2 ni V3 ; V2 sans V3 ; V3 peut être désactivée sans rétrograder tout le système.
+
+### Critères de « prêt pour V2 » et « prêt pour V3 »
+
+- **Passage V1 → V2 :** contrats A0.1–A0.10 documentés et stables, migrations testées depuis une installation V1, aucun échec de tests IM/quotas, et un scénario de secours factice confirmé. **On ajoute uniquement les services/cache/écrans du catalogue.**
+- **Passage V2 → V3 :** catalogue indépendant et optionnel, pipeline V1 toujours unique et testé, événements et état partagé exploitables par le nouveau sélecteur. **On ajoute une stratégie de sélection et des métriques ; on ne réécrit pas le fallback.**
+- À chaque release : démontrer un **upgrade** depuis l'artefact précédent **et un rollback** documenté, sans supprimer clés ni bases ni historique.
+
+---
+
 ## 3. Phases d'implémentation — ordre recommandé
 
 ### V1 — Fiabilité du routeur (priorité P0)
@@ -176,7 +243,7 @@
 - **V2 / P1 — Catalogue API distantes :** https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/3
 - **V3 / P2 — Sélection intelligente et métriques :** https://github.com/Vlad-BloodMoon/OpenSim-AI-Bridge/issues/4
 
-Ordre de réalisation : **V1 → V2 → V3**, avec CI et validation sur bot de test entre chaque étape.
+Ordre de réalisation : **socle A0.1–A0.10 → V1 → V2 → V3**, avec CI et validation sur bot de test entre chaque étape. **Aucune refonte intermédiaire** : l'architecture et le pipeline communs sont établis avant la V1.
 
 Ce document est la **source de vérité du TODO**. À l'ouverture de chaque chantier, relier l'issue/PR et cocher les cases seulement après tests réels. Les liens tiers donnent des **pistes techniques**, non des dépendances déjà installées.
 
