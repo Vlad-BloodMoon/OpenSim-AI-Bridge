@@ -112,17 +112,17 @@ internal static class AiFallbackIntegrationChecks
             Assert(!File.ReadAllText(log).Contains("not-a-real-key-for-offline-tests"),
                    "mock credential must not leak to activity log");
 
-            // A second avatar shares the SQLite cooldown but is allowed to
-            // call the next provider immediately without touching Groq.
+            // A second avatar shares BOTH model cooldowns and reaches Gemini
+            // directly, without retrying Groq or OpenRouter while they cool down.
             var otherFake = new FakeHttp();
-            otherFake.Add(HttpStatusCode.OK, OpenAiAnswer);
+            otherFake.Add(HttpStatusCode.OK, GeminiAnswer);
             using (var other = new RemoteAiResponder(Settings(), Path.Combine(dir, "secondary.json"), otherFake, db))
             {
                 var answer = await other.ReplyAsync(Guid.NewGuid(), "Hello", CancellationToken.None);
-                Assert(answer?.Contains("Test answer from approved model.") == true, "second bot must answer");
+                Assert(answer?.Contains("Gemini backup answered.") == true, "second bot must answer");
             }
-            Assert(otherFake.CalledProviders.SequenceEqual(new[] {"OpenRouter"}),
-                   "second avatar must skip shared Groq cooldown but retain next provider");
+            Assert(otherFake.CalledProviders.SequenceEqual(new[] {"Gemini"}),
+                   "second avatar must skip both shared model cooldowns and reach Gemini");
 
             // An HTTP 200 with empty text is not a valid answer: next model.
             var emptyFake = new FakeHttp();
